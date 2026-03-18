@@ -117,7 +117,7 @@ elif menu == "🏆 Leaderboard Map":
     st_autorefresh(interval=10000, key="map_refresh")
     
     # 1. ระบุชื่อไฟล์ (เช็คให้ตรงกับที่อัปโหลดขึ้น GitHub)
-    MAP_FILE = "Gemini_Generated_Image_2fhehv2fhehv2fhe.png" 
+    MAP_FILE = "map.png" 
     
     # ตรวจสอบว่าไฟล์มีตัวตนอยู่ใน Server ไหม
     if os.path.exists(MAP_FILE):
