@@ -98,57 +98,47 @@ if menu == "📝 ลงทะเบียนพนักงาน":
             st.rerun()
 
 # --- [ หน้าสแกน Checkpoint (สแกนอย่างเดียว) ] ---
-# --- [ หน้าสแกน Checkpoint - แบบสแกนทีเดียวจบ ] ---
-elif menu == "📷 จุดสแกน Checkpoint":
-    st.header("📷 สแกน QR เช็คอิน")
-    cp = st.selectbox("จุดประจำการ", ["Start", "CP1", "CP2", "CP3", "CP4", "CP5", "Finish"])
+# --- [ หน้าสแกน Checkpoint - ฉบับบันทึกแล้วรีเฟรช ] ---
+elif menu == "จุดสแกนประจำจุด":
+    st.header("📸 สแกน QR อัตโนมัติ")
+    cp_loc = st.selectbox("เลือกจุดประจำการ", ["Start", "CP1", "CP2", "CP3", "Finish"])
     
-    # 1. ใช้ตัวแปรควบคุมเพื่อไม่ให้รันซ้ำใน Loop เดียวกัน
-    if "is_processing" not in st.session_state:
-        st.session_state.is_processing = False
+    # 1. Cooldown เพื่อกันรันรัวๆ ในเสี้ยววินาที (0.5 วินาทีก็พอถ้าจะ rerun)
+    if "last_scan_time" not in st.session_state:
+        st.session_state.last_scan_time = 0
 
-    st.info(f"📍 จุด: {cp} | กำลังรอสแกน...")
+    st.info(f"💡 จ่อ QR เพื่อบันทึก (ระบบจะรีเซ็ตอัตโนมัติหลังสแกน)")
 
-    # 2. พื้นที่แสดงกล้อง
-    cam_area = st.empty()
-    
-    # ถ้ายังไม่ได้อยู่ในขั้นตอนบันทึก ให้เปิดกล้อง
-    if not st.session_state.is_processing:
-        with cam_area.container():
-            scanned_bib = qrcode_scanner(key=f"scanner_{cp}")
+    # 2. เครื่องสแกน QR
+    scanned_bib = qrcode_scanner(key=f"scanner_{cp_loc}")
+
+    if scanned_bib:
+        now = time.time()
+        # เช็คว่าผ่านไปอย่างน้อย 2 วินาทีหรือยัง (ป้องกันการ rerun วนลูป)
+        if (now - st.session_state.last_scan_time) > 2:
+            st.session_state.last_scan_time = now # ล็อคเวลาทันที
             
-        # 3. เมื่อสแกนติด และยังไม่ได้เริ่มประมวลผล
-        if scanned_bib:
-            st.session_state.is_processing = True # ล็อคทันที!
-            cam_area.empty() # ปิดกล้องทันที!
-            
-            with st.status(f"🚀 กำลังบันทึก BIB: {scanned_bib}...") as status:
-                try:
-                    # บันทึกลง Supabase
+            try:
+                with st.spinner(f"กำลังบันทึก BIB: {scanned_bib}..."):
                     res = supabase.table("run_logs").insert({
                         "bib_number": scanned_bib,
-                        "checkpoint_name": cp
+                        "checkpoint_name": cp_loc
                     }).execute()
                     
                     if res.data:
-                        status.update(label=f"✅ บันทึกสำเร็จ: {scanned_bib}", state="complete", expanded=False)
-                        st.balloons()
+                        st.success(f"✅ บันทึกสำเร็จ: {scanned_bib}")
+                        st.toast(f"บันทึก {scanned_bib} เรียบร้อย", icon="✅")
                         
-                        # หน่วงเวลา 2 วินาทีเพื่อให้คนวิ่งผ่านไป
-                        time.sleep(2)
+                        # 3. **หน่วงเวลา 1.5 วินาที** ให้เจ้าหน้าที่เห็นชื่อคนวิ่ง
+                        time.sleep(1.5)
                         
-                        # ปลดล็อคและรีเซ็ตหน้าจอเพื่อรับคนใหม่
-                        st.session_state.is_processing = False
-                        st.rerun()
+                        # 4. **สั่ง Refresh จอ 1 ครั้ง** เพื่อรอคนใหม่
+                        st.rerun() 
                         
-                except Exception as e:
-                    st.error(f"เกิดข้อผิดพลาด: {e}")
-                    st.session_state.is_processing = False
-                    if st.button("ลองใหม่"):
-                        st.rerun()
-    else:
-        # ระหว่างที่กำลังบันทึก (is_processing = True) กล้องจะไม่ถูกวาดขึ้นมาใหม่
-        st.warning("กำลังประมวลผลข้อมูลคนก่อนหน้า...")
+            except Exception as e:
+                st.error(f"เกิดข้อผิดพลาด: {e}")
+                if st.button("รีเซ็ตหน้าจอ"):
+                    st.rerun()
 
 # --- [ Leaderboard (ดึงรูปจากตารางพนักงาน) ] ---
 elif menu == "🏆 Leaderboard":
@@ -156,24 +146,24 @@ elif menu == "🏆 Leaderboard":
     st_autorefresh(15000)
     
     # ดึงข้อมูลจาก log และเอารูปโปรไฟล์จากตาราง runners
+    # ตัวอย่าง Logic ใน Leaderboard
     res = supabase.table("run_logs").select("*, runners(name, department, profile_url)").execute()
-    
     if res.data:
         df = pd.DataFrame([{
-            "รูป": r['runners']['profile_url'], # ใช้รูปจากโปรไฟล์ที่ถ่ายตอนลงทะเบียน
-            "BIB": r['bib_number'], 
+            "รูป": r['runners']['profile_url'],
+            "BIB": r['bib_number'],
             "ชื่อ": r['runners']['name'],
-            "แผนก": r['runners']['department'], 
-            "จุดล่าสุด": r['checkpoint_name'], 
+            "จุดล่าสุด": r['checkpoint_name'],
             "เวลา": r['scanned_at']
         } for r in res.data])
         
-        # จัดอันดับ
+        # ดึงเฉพาะ Log ล่าสุดของแต่ละคน
         summary = df.sort_values("เวลา", ascending=False).groupby("BIB").first().reset_index()
-        count_data = df.groupby("BIB").size().reset_index(name="Checkpoints")
-        final = pd.merge(summary, count_data, on="BIB").sort_values(["Checkpoints", "เวลา"], ascending=[False, True])
+        # นับจำนวนจุดสะสม
+        count_df = df.groupby("BIB").size().reset_index(name="คะแนน")
         
-        st.dataframe(final[["รูป", "BIB", "ชื่อ", "แผนก", "Checkpoints", "จุดล่าสุด"]], 
-                     column_config={"รูป": st.column_config.ImageColumn("Profile")}, use_container_width=True)
+        final = pd.merge(summary, count_df, on="BIB").sort_values("คะแนน", ascending=False)
+        st.dataframe(final[["รูป", "BIB", "ชื่อ", "คะแนน", "จุดล่าสุด"]], 
+                    column_config={"รูป": st.column_config.ImageColumn()})
     else:
         st.info("ยังไม่มีข้อมูลการเช็คอิน")
