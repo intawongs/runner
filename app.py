@@ -112,36 +112,29 @@ elif menu == "📸 จุดสแกน Checkpoint":
 
 # --- [ หน้า 3: Leaderboard Map (Dynamic Map) ] ---
 # --- [ หน้า 3: Leaderboard Map - แสดงเฉพาะพิกัดล่าสุดของแต่ละคน ] ---
+# --- [ หน้า 3: Leaderboard Map - ฉบับกระจายรูปไม่ให้ทับกัน ] ---
 elif menu == "🏆 Leaderboard Map":
     st.header("🏆 RCI Real-time Map (Latest Activity)")
-    # รีเฟรชหน้าจออัตโนมัติทุก 10 วินาที เพื่ออัปเดตตำแหน่งนักวิ่ง
     st_autorefresh(interval=10000, key="map_refresh")
     
-    MAP_FILE = "map.png" 
+    MAP_FILE = "Gemini_Generated_Image_2fhehv2fhehv2fhe.png" 
     
     if os.path.exists(MAP_FILE):
         try:
-            # 1. โหลดรูปแผนที่โรงงาน RCI
             bg = Image.open(MAP_FILE).convert("RGBA")
             canvas = bg.copy()
             draw = ImageDraw.Draw(canvas)
 
-            # 2. ดึงข้อมูล Log ทั้งหมดจาก Supabase
+            # 1. ดึงข้อมูล Log ทั้งหมด
             res = supabase.table("run_logs").select("*, runners(name, profile_url)").order("scanned_at", desc=True).execute()
             
             if res.data:
                 df = pd.DataFrame(res.data)
                 
-                # --- LOGIC สำคัญ: หาจุดล่าสุดของแต่ละคน ---
-                # เรียงเวลาจากใหม่ไปเก่า แล้วเลือกคนละ 1 แถว (อันที่ใหม่ที่สุด)
-                # วิธีนี้จะทำให้พนักงาน 1 คน มีรูปปรากฏบนแผนที่แค่จุดเดียวเท่านั้น (จุดล่าสุดที่เขาเพิ่งสแกน)
+                # 2. หาจุดล่าสุดของพนักงานแต่ละคน (1 คนมี 1 ที่อยู่)
                 latest_per_runner = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
 
-                # --- LOGIC เสริม: ถ้าจุดหนึ่งมีหลายคน ให้โชว์เฉพาะคนล่าสุดของจุดนั้น ---
-                # (เพื่อไม่ให้รูปซ้อนกันจนดูไม่ออกในกรณีคนเยอะ)
-                display_on_map = latest_per_runner.sort_values("scanned_at", ascending=False).groupby("checkpoint_name").first().reset_index()
-
-                # พิกัด x, y (อ้างอิงรูป 1024x1024)
+                # 3. พิกัดที่คุณระบุมา (ใช้ค่าที่คุณตั้งไว้)
                 POINTS = {
                     "Checkpoint 1": (715, 390),
                     "Checkpoint 2": (715, 190),
@@ -149,43 +142,55 @@ elif menu == "🏆 Leaderboard Map":
                     "Finish": (1250, 1750)
                 }
 
-                for _, r in display_on_map.iterrows():
-                    cp = r['checkpoint_name']
-                    if cp in POINTS and r['runners']['profile_url']:
-                        try:
-                            # 3. ดึงรูปโปรไฟล์พนักงานจาก URL Storage
-                            p_res = requests.get(r['runners']['profile_url'])
-                            p_img = Image.open(BytesIO(p_res.content)).convert("RGBA")
-                            
-                            # 4. จัดการรูปให้เป็นวงกลม (Circle Crop)
-                            size = (75, 75) # ขนาดรูปนักวิ่งบนแผนที่
-                            p_img = ImageOps.fit(p_img, size, centering=(0.5, 0.5))
-                            mask = Image.new('L', size, 0)
-                            ImageDraw.Draw(mask).ellipse((0, 0) + size, fill=255)
-                            
-                            # 5. แปะรูปลงบนแผนที่ตามพิกัด
-                            pos = POINTS[cp]
-                            offset = (pos[0]-size[0]//2, pos[1]-size[1]//2)
-                            canvas.paste(p_img, offset, mask)
-                            
-                            # 6. วาดวงกลมเส้นขอบสีฟ้า (Neon Border) เน้นจุดล่าสุด
-                            draw.ellipse([offset, (offset[0]+size[0], offset[1]+size[1])], outline="#00FFFF", width=8)
-                            
-                            # 7. เขียนชื่อพนักงานกำกับ (ตัวเล็กๆ ใต้รูป)
-                            # draw.text((offset[0], offset[1]+size[1]+5), r['runners']['name'], fill="white")
-                            
-                        except Exception as e:
-                            # กรณีโหลดรูปพนักงานบางคนไม่ได้ ให้ข้ามไป
-                            continue
+                # 4. วนลูปราย Checkpoint เพื่อวาดรูป "กลุ่มคนล่าสุด"
+                for cp_name, base_pos in POINTS.items():
+                    # ดึง 3 คนล่าสุดที่อยู่ที่จุดนี้ (และต้องเป็นจุดล่าสุดของเขาจริงๆ)
+                    runners_at_cp = latest_per_runner[latest_per_runner['checkpoint_name'] == cp_name].head(3)
+                    
+                    # ตัวแปรสำหรับขยับตำแหน่ง (Offset)
+                    # เริ่มต้นที่ 0 (คนแรกอยู่ที่จุดเป๊ะๆ) คนถัดไปจะเยื้องออกไป
+                    step_x = 0
+                    step_y = 0
 
-            # 8. แสดงผลรูปแผนที่บน Streamlit
-            st.image(canvas, use_container_width=True, caption="📍 ตำแหน่งล่าสุดของพนักงานแต่ละจุด (Real-time)")
+                    for i, r in enumerate(runners_at_cp.iloc[::-1].iterrows()): # วาดคนเก่าก่อน คนใหม่จะได้ทับข้างบน
+                        idx, row = r
+                        if row['runners']['profile_url']:
+                            try:
+                                p_res = requests.get(row['runners']['profile_url'])
+                                p_img = Image.open(BytesIO(p_res.content)).convert("RGBA")
+                                
+                                # ขนาดรูป (ปรับให้เหมาะกับพิกัดหลักพัน)
+                                size = (120, 120) 
+                                p_img = ImageOps.fit(p_img, size, centering=(0.5, 0.5))
+                                mask = Image.new('L', size, 0)
+                                ImageDraw.Draw(mask).ellipse((0, 0) + size, fill=255)
+                                
+                                # คำนวณตำแหน่งเยื้อง (กระจายออกไปทางขวา+ล่าง)
+                                pos_x = base_pos[0] - (size[0]//2) + step_x
+                                pos_y = base_pos[1] - (size[1]//2) + step_y
+                                
+                                canvas.paste(p_img, (pos_x, pos_y), mask)
+                                
+                                # วาดเส้นขอบ (ถ้าเป็นคนล่าสุด i == 2 ให้ขอบสีฟ้า Neon)
+                                color = "#00FFFF" if i == len(runners_at_cp)-1 else "#FFFFFF"
+                                draw.ellipse([pos_x, pos_y, pos_x+size[0], pos_y+size[1]], outline=color, width=6)
+                                
+                                # เพิ่มค่าเยื้องสำหรับคนถัดไป
+                                step_x += 50 
+                                step_y += 40 
+                            except:
+                                continue
+
+            st.image(canvas, use_container_width=True)
             
         except Exception as e:
-            st.error(f"❌ เกิดข้อผิดพลาดในการประมวลผลแผนที่: {e}")
+            st.error(f"Error: {e}")
     else:
-        st.error(f"❌ ไม่พบไฟล์รูป '{MAP_FILE}' ในโฟลเดอร์แอป")
-        st.info("กรุณาตรวจสอบว่าได้อัปโหลดรูปแผนที่ขึ้น GitHub เรียบร้อยแล้ว")
+        st.error(f"ไม่พบไฟล์รูป {MAP_FILE}")
+
+    # --- ตาราง Leaderboard ด้านล่าง ---
+    st.divider()
+    # ... (โค้ดตารางด้านล่างคงเดิม) ...
 
     # --- ส่วนตารางคะแนน (แสดงทุกคนเพื่อความชัดเจน) ---
     st.divider()
