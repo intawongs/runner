@@ -129,7 +129,7 @@ elif menu == "🏆 Leaderboard Map":
     # พิกัด x, y ตามที่คุณระบุ
     BASE_POINTS = {
         "Checkpoint 1": (715, 390), "Checkpoint 2": (715, 190),
-        "Start": (815, 500), "Finish": (850, 600)
+        "Start": (815, 500), "Finish": (880, 600)
     }
 
     if os.path.exists(MAP_FILE):
@@ -146,7 +146,7 @@ elif menu == "🏆 Leaderboard Map":
 
             for cp_name, base_pos in BASE_POINTS.items():
                 runners = display_on_map[display_on_map['checkpoint_name'] == cp_name]
-                img_size = 60; gap = 10; total_step = img_size + gap
+                img_size = 55; gap = 10; total_step = img_size + gap
                 start_x = base_pos[0] - (total_step * 1.5)
                 start_y = base_pos[1] - (total_step * 1.5)
 
