@@ -135,9 +135,9 @@ elif menu == "🏆 Leaderboard Map":
                 # พิกัด x, y (Checkpoint 1 อยู่ล่าง, 2 อยู่บน)
                 POINTS = {
                     "Checkpoint 1": (1000,1500 ), 
-                    "Checkpoint 2": (580, 350),
+                    "Checkpoint 2": (1250, 350),
                     "Start": (1250, 1750),
-                    "Finish": (850, 560)
+                    "Finish": (1250, 1750)
                 }
 
                 # ดึงคนล่าสุดของแต่ละจุดมาแปะ
