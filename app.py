@@ -126,7 +126,7 @@ elif menu == "🏆 Leaderboard Map":
     st.header("🏆 RCI Real-time Map (FIFO 3 Latest)")
     st_autorefresh(interval=10000, key="map_refresh_fifo_v2")
     
-    MAP_FILE = "Gemini_Generated_Image_2fhehv2fhehv2fhe.png" 
+    MAP_FILE = "map.png" 
     
     # พิกัดใหม่ที่คุณระบุ (Start/Finish อยู่โซนล่าง)
     BASE_POINTS = {
