@@ -167,7 +167,7 @@ elif menu == "🏆 Leaderboard Map":
                                 
                                 # --- Logic การแสดงผลแบบ FIFO ---
                                 # คนใหม่ล่าสุด (i=0) ขนาด 140px, คนเก่าถัดไป (i=1,2) ขนาด 100px
-                                current_size = 140 if i == 0 else 100
+                                current_size = 100 if i == 0 else 70
                                 p_img = ImageOps.fit(p_img, (current_size, current_size), centering=(0.5, 0.5))
                                 
                                 # ทำรูปวงกลม
