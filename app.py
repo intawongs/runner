@@ -156,7 +156,7 @@ elif menu == "🏆 Leaderboard Map":
                     # ดึง 3 คนล่าสุดของจุดนี้ (เรียงใหม่ -> เก่า)
                     runners_at_cp = latest_per_runner[latest_per_runner['checkpoint_name'] == cp_name].head(3)
                     
-                    gap = 25 # ระยะห่างระหว่างรูป
+                    gap = 15 # ระยะห่างระหว่างรูป
 
                     for i, (_, row) in enumerate(runners_at_cp.iterrows()):
                         if row['runners']['profile_url']:
@@ -167,7 +167,7 @@ elif menu == "🏆 Leaderboard Map":
                                 
                                 # --- Logic การแสดงผลแบบ FIFO ---
                                 # คนใหม่ล่าสุด (i=0) ขนาด 140px, คนเก่าถัดไป (i=1,2) ขนาด 100px
-                                current_size = 100 if i == 0 else 70
+                                current_size = 90 if i == 0 else 70
                                 p_img = ImageOps.fit(p_img, (current_size, current_size), centering=(0.5, 0.5))
                                 
                                 # ทำรูปวงกลม
