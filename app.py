@@ -7,183 +7,184 @@ import qrcode
 from io import BytesIO
 from datetime import datetime
 import time
+import requests
+from PIL import Image, ImageDraw, ImageOps
+import os
 
 # --- 1. การตั้งค่าระบบและการเชื่อมต่อ ---
-st.set_page_config(page_title="RCI Walk Rally AI Tracker", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="RCI Walk Rally AI Tracker", layout="wide")
 
 def init_connection():
     try:
         url = st.secrets["SUPABASE_URL"]
         key = st.secrets["SUPABASE_KEY"]
         return create_client(url, key)
-    except Exception as e:
-        st.error("❌ กรุณาตั้งค่า Secrets: SUPABASE_URL และ SUPABASE_KEY ใน Streamlit Cloud")
+    except:
+        st.error("❌ กรุณาตั้งค่า Secrets ใน Streamlit Cloud")
         st.stop()
 
 supabase = init_connection()
 
-# --- 2. ฟังก์ชันช่วย (Helper Functions) ---
+# --- 2. Helper Functions ---
 def get_next_bib():
     try:
         res = supabase.table("runners").select("bib_number").order("bib_number", desc=True).limit(1).execute()
         if not res.data: return "RCI-001"
-        last_bib = res.data[0]['bib_number']
-        last_num = int(last_bib.split("-")[1])
+        last_num = int(res.data[0]['bib_number'].split("-")[1])
         return f"RCI-{last_num + 1:03d}"
     except: return "RCI-001"
 
 def upload_photo(file_bytes, filename):
     try:
-        bucket_name = "runner_photos"
-        filepath = f"profile_{filename}.jpg"
-        # อัปโหลดรูป (ต้องตั้ง Bucket เป็น Public ใน Supabase Storage)
-        supabase.storage.from_(bucket_name).upload(filepath, file_bytes, {"content-type": "image/jpeg"})
-        res = supabase.storage.from_(bucket_name).get_public_url(filepath)
-        return res
-    except Exception as e:
-        st.error(f"Upload Error: {e}")
-        return None
+        path = f"profile_{filename}.jpg"
+        supabase.storage.from_("runner_photos").upload(path, file_bytes, {"content-type": "image/jpeg"})
+        return supabase.storage.from_("runner_photos").get_public_url(path)
+    except: return None
 
-# --- 3. Sidebar เมนูหลัก ---
-st.sidebar.title("🏃 RCI Walk Rally 2026")
-st.sidebar.subheader("ระบบติดตามนักวิ่ง AI")
-menu = st.sidebar.radio("เมนูหลัก", ["📝 ลงทะเบียนพนักงาน", "📸 จุดสแกน Checkpoint", "🏆 Leaderboard"])
+# --- 3. Sidebar Menu ---
+st.sidebar.title("🏃 RCI AI Tracker")
+menu = st.sidebar.radio("เมนูหลัก", ["📝 ลงทะเบียนพนักงาน", "📸 จุดสแกน Checkpoint", "🏆 Leaderboard Map"])
 
-# --- [ หน้า 1: ลงทะเบียนพนักงาน ] ---
+# --- [ หน้า 1: ลงทะเบียนพนักงาน + ถ่ายรูป ] ---
 if menu == "📝 ลงทะเบียนพนักงาน":
     st.header("📝 ลงทะเบียนและถ่ายรูปโปรไฟล์")
-    
-    # ควบคุม Step การลงทะเบียน
-    if "reg_step" not in st.session_state:
-        st.session_state.reg_step = "FORM"
+    if "reg_step" not in st.session_state: st.session_state.reg_step = "FORM"
 
     if st.session_state.reg_step == "FORM":
         next_bib = get_next_bib()
         with st.form("reg_form"):
-            st.info(f"หมายเลข BIB ถัดไปคือ: **{next_bib}**")
-            name = st.text_input("ชื่อ-นามสกุลพนักงาน")
-            dept = st.selectbox("แผนก", ["Production", "R&D", "QA", "Logistics", "Office", "Maintenance", "Accounting", "Finance"])
-            submit_form = st.form_submit_button("ถัดไป: ถ่ายรูปโปรไฟล์")
-            
-            if submit_form:
+            st.info(f"BIB ถัดไป: **{next_bib}**")
+            name = st.text_input("ชื่อ-นามสกุล")
+            dept = st.selectbox("แผนก", ["Production", "R&D", "QA", "Logistics", "Office", "Maintenance"])
+            if st.form_submit_button("ถัดไป: ถ่ายรูป"):
                 if name:
                     st.session_state.temp_user = {"bib": next_bib, "name": name, "dept": dept}
                     st.session_state.reg_step = "PHOTO"
                     st.rerun()
-                else: st.warning("กรุณากรอกชื่อพนักงาน")
+                else: st.warning("กรุณากรอกชื่อ")
 
     elif st.session_state.reg_step == "PHOTO":
         st.subheader(f"📸 ถ่ายรูปโปรไฟล์: {st.session_state.temp_user['name']}")
-        img_file = st.camera_input("ส่องหน้าให้ตรงแล้วกดถ่ายรูป")
-        
+        img_file = st.camera_input("กดถ่ายรูปหน้าตรง")
         if img_file:
-            with st.spinner("กำลังบันทึกข้อมูลและเจน QR..."):
+            with st.spinner("กำลังบันทึก..."):
                 p_url = upload_photo(img_file.getvalue(), st.session_state.temp_user['bib'])
                 if p_url:
-                    # บันทึกลงตาราง runners (ต้องมีคอลัมน์ profile_url ใน DB)
                     supabase.table("runners").insert({
-                        "bib_number": st.session_state.temp_user['bib'],
-                        "name": st.session_state.temp_user['name'],
-                        "department": st.session_state.temp_user['dept'],
-                        "profile_url": p_url
+                        "bib_number": st.session_state.temp_user['bib'], "name": st.session_state.temp_user['name'],
+                        "department": st.session_state.temp_user['dept'], "profile_url": p_url
                     }).execute()
-                    
-                    # สร้าง QR Code
                     qr = qrcode.make(st.session_state.temp_user['bib'])
-                    buf = BytesIO()
-                    qr.save(buf, format="PNG")
+                    buf = BytesIO(); qr.save(buf, format="PNG")
                     st.session_state.reg_qr = buf.getvalue()
                     st.session_state.reg_step = "DONE"
                     st.rerun()
-        
-        if st.button("⬅️ กลับไปแก้ไขชื่อ"):
-            st.session_state.reg_step = "FORM"
-            st.rerun()
 
     elif st.session_state.reg_step == "DONE":
-        st.success(f"✅ ลงทะเบียนสำเร็จ! BIB: {st.session_state.temp_user['bib']}")
-        st.image(st.session_state.reg_qr, width=300, caption="👉 แคปหน้าจอรูปนี้ไว้สแกนที่จุด Checkpoint")
+        st.success(f"✅ สำเร็จ! BIB: {st.session_state.temp_user['bib']}")
+        st.image(st.session_state.reg_qr, width=300, caption="👉 แคปหน้าจอรูปนี้ไว้สแกน")
         if st.button("ลงทะเบียนคนถัดไป"):
-            st.session_state.reg_step = "FORM"
-            st.rerun()
+            st.session_state.reg_step = "FORM"; st.rerun()
 
-# --- [ หน้า 2: จุดสแกน Checkpoint ] ---
+# --- [ หน้า 2: จุดสแกน Checkpoint (Auto & Refresh) ] ---
 elif menu == "📸 จุดสแกน Checkpoint":
-    st.header("📸 สแกน QR เช็คอินอัตโนมัติ")
+    st.header("📸 สแกน QR เช็คอิน")
+    cp_loc = st.selectbox("📍 คุณอยู่จุดไหน?", ["Start", "Checkpoint 1", "Checkpoint 2", "Finish"])
     
-    # ล็อคป้องกันการสแกนรัว (Double Scan)
-    if "is_saving" not in st.session_state:
-        st.session_state.is_saving = False
-
-    cp_loc = st.selectbox("📍 คุณประจำการอยู่ที่จุดไหน?", ["Start", "CP1", "CP2", "CP3", "CP4", "CP5", "Finish"])
-    
-    st.divider()
+    if "is_saving" not in st.session_state: st.session_state.is_saving = False
 
     if not st.session_state.is_saving:
-        st.info(f"🔍 กำลังรอสแกนที่จุด: **{cp_loc}**")
-        # เครื่องสแกน QR
-        scanned_val = qrcode_scanner(key=f"scanner_{cp_loc}")
-        
-        if scanned_val:
+        st.info(f"🔍 รอสแกนที่จุด: {cp_loc}")
+        val = qrcode_scanner(key=f"scanner_{cp_loc}")
+        if val:
             st.session_state.is_saving = True
-            st.session_state.current_bib = scanned_val
+            st.session_state.curr_bib = val
             st.rerun()
     else:
-        # ขั้นตอนบันทึกลง DB
-        bib_to_save = st.session_state.current_bib
-        st.warning(f"🚀 กำลังบันทึก BIB: {bib_to_save} ...")
-        
+        with st.status(f"🚀 กำลังบันทึก {st.session_state.curr_bib}...") as s:
+            try:
+                supabase.table("run_logs").insert({"bib_number": st.session_state.curr_bib, "checkpoint_name": cp_loc}).execute()
+                s.update(label="✅ บันทึกสำเร็จ!", state="complete")
+                st.balloons(); time.sleep(1.5)
+                st.session_state.is_saving = False; st.rerun()
+            except:
+                st.error("Error!"); st.session_state.is_saving = False; st.button("Reset")
+
+# --- [ หน้า 3: Leaderboard Map (Dynamic Map) ] ---
+# --- [ หน้า 3: Leaderboard Map (ฉบับเช็คไฟล์ละเอียด) ] ---
+elif menu == "🏆 Leaderboard Map":
+    st.header("🏆 RCI Real-time Map")
+    st_autorefresh(interval=10000, key="map_refresh")
+    
+    # 1. ระบุชื่อไฟล์ (เช็คให้ตรงกับที่อัปโหลดขึ้น GitHub)
+    MAP_FILE = "Gemini_Generated_Image_2fhehv2fhehv2fhe.png" 
+    
+    # ตรวจสอบว่าไฟล์มีตัวตนอยู่ใน Server ไหม
+    if os.path.exists(MAP_FILE):
         try:
-            res = supabase.table("run_logs").insert({
-                "bib_number": bib_to_save,
-                "checkpoint_name": cp_loc
-            }).execute()
+            # 2. โหลดรูปพื้นหลัง
+            bg = Image.open(MAP_FILE).convert("RGBA")
+            canvas = bg.copy()
+            draw = ImageDraw.Draw(canvas)
+
+            # 3. ดึงข้อมูลนักวิ่งล่าสุด
+            res = supabase.table("run_logs").select("*, runners(name, profile_url)").order("scanned_at", desc=True).execute()
             
             if res.data:
-                st.success(f"✅ บันทึกสำเร็จ! BIB: {bib_to_save} ผ่านจุด {cp_loc}")
-                st.balloons()
-                time.sleep(1.5) # หน่วงเวลาให้เห็นผล
-                
-                # ล้างค่าและ Refresh จอเพื่อรอคนใหม่
-                st.session_state.is_saving = False
-                st.session_state.current_bib = None
-                st.rerun()
+                df = pd.DataFrame(res.data)
+                # พิกัด x, y (Checkpoint 1 อยู่ล่าง, 2 อยู่บน)
+                POINTS = {
+                    "Checkpoint 1": (530, 800), 
+                    "Checkpoint 2": (580, 350),
+                    "Start": (530, 920),
+                    "Finish": (850, 560)
+                }
+
+                # ดึงคนล่าสุดของแต่ละจุดมาแปะ
+                latest = df.groupby("checkpoint_name").first().reset_index()
+                for _, r in latest.iterrows():
+                    cp = r['checkpoint_name']
+                    if cp in POINTS and r['runners']['profile_url']:
+                        try:
+                            # โหลดรูปโปรไฟล์พนักงานจาก URL
+                            p_res = requests.get(r['runners']['profile_url'])
+                            p_img = Image.open(BytesIO(p_res.content)).convert("RGBA")
+                            
+                            # ทำรูปเป็นวงกลม
+                            size = (120, 120)
+                            p_img = ImageOps.fit(p_img, size, centering=(0.5, 0.5))
+                            mask = Image.new('L', size, 0)
+                            draw_mask = ImageDraw.Draw(mask)
+                            draw_mask.ellipse((0, 0) + size, fill=255)
+                            
+                            # วางรูปลงพิกัด
+                            pos = POINTS[cp]
+                            offset = (pos[0]-size[0]//2, pos[1]-size[1]//2)
+                            canvas.paste(p_img, offset, mask)
+                            
+                            # วาดวงกลมเรืองแสงรอบรูป
+                            draw.ellipse([offset, (offset[0]+size[0], offset[1]+size[1])], outline="#00FFFF", width=8)
+                        except:
+                            continue # ถ้าโหลดรูปคนนี้ไม่ได้ ให้ข้ามไปคนถัดไป
+
+            # 4. แสดงรูปแผนที่
+            st.image(canvas, use_container_width=True, caption="📍 แผนที่แสดงตำแหน่งนักวิ่งล่าสุดรายจุด")
+            
         except Exception as e:
-            st.error(f"Error: {e}")
-            if st.button("🔄 รีเซ็ตเพื่อลองใหม่"):
-                st.session_state.is_saving = False
-                st.rerun()
-
-# --- [ หน้า 3: Leaderboard ] ---
-elif menu == "🏆 Leaderboard":
-    st.header("🏆 อันดับนักวิ่ง Real-time")
-    st_autorefresh(interval=15000, key="auto_refresh_board")
-
-    # ดึงข้อมูล Log และ Join กับตาราง Runners เพื่อเอาชื่อและรูปโปรไฟล์
-    res = supabase.table("run_logs").select("*, runners(name, department, profile_url)").execute()
-    
-    if res.data:
-        # แปลงเป็น DataFrame
-        df = pd.DataFrame([{
-            "Profile": r['runners']['profile_url'],
-            "BIB": r['bib_number'],
-            "ชื่อ-นามสกุล": r['runners']['name'],
-            "แผนก": r['runners']['department'],
-            "จุดล่าสุด": r['checkpoint_name'],
-            "เวลาล่าสุด": r['scanned_at']
-        } for r in res.data])
-
-        # คำนวณอันดับ: เอารูปล่าสุด และนับจำนวนจุดที่ผ่าน
-        summary = df.sort_values("เวลาล่าสุด", ascending=False).groupby("BIB").first().reset_index()
-        counts = df.groupby("BIB").size().reset_index(name="คะแนนสะสม")
-        
-        final_df = pd.merge(summary, counts, on="BIB").sort_values(["คะแนนสะสม", "เวลาล่าสุด"], ascending=[False, True])
-        
-        # แสดงตารางสวยงาม
-        st.dataframe(
-            final_df[["Profile", "BIB", "ชื่อ-นามสกุล", "แผนก", "คะแนนสะสม", "จุดล่าสุด"]],
-            column_config={"Profile": st.column_config.ImageColumn("รูปถ่าย")},
-            use_container_width=True
-        )
+            st.error(f"❌ โหลดรูปแผนที่ไม่ได้: {e}")
     else:
-        st.info("ยังไม่มีข้อมูลการวิ่งในขณะนี้...")
+        # ถ้าหาไฟล์ไม่เจอ จะแสดงข้อความเตือนนี้
+        st.error(f"❌ ไม่พบไฟล์รูป '{MAP_FILE}' ในโฟลเดอร์หลัก")
+        st.info("💡 วิธีแก้: ตรวจสอบว่าคุณได้อัปโหลดไฟล์รูปนี้ขึ้น GitHub หรือยัง? และชื่อไฟล์สะกดถูกต้องหรือไม่?")
+        # ลองลิสต์ไฟล์ที่มีทั้งหมดในโฟลเดอร์ออกมาดู (เพื่อ Debug)
+        st.write("ไฟล์ที่พบในเครื่องขณะนี้:", os.listdir("."))
+    
+    # ตาราง Leaderboard ด้านล่าง
+    st.divider()
+    res_all = supabase.table("run_logs").select("*, runners(name, department, profile_url)").execute()
+    if res_all.data:
+        df_all = pd.DataFrame([{ "รูป": r['runners']['profile_url'], "BIB": r['bib_number'], "ชื่อ": r['runners']['name'], "แผนก": r['runners']['department'], "จุด": r['checkpoint_name'], "เวลา": r['scanned_at'] } for r in res_all.data])
+        sum_df = df_all.sort_values("เวลา", ascending=False).groupby("BIB").first().reset_index()
+        cnt_df = df_all.groupby("BIB").size().reset_index(name="คะแนน")
+        final = pd.merge(sum_df, cnt_df, on="BIB").sort_values("คะแนน", ascending=False)
+        st.dataframe(final[["รูป", "BIB", "ชื่อ", "คะแนน", "จุด"]], column_config={"รูป": st.column_config.ImageColumn()})
