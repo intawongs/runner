@@ -118,7 +118,7 @@ elif menu == "🏆 Leaderboard Map":
     # รีเฟรชหน้าจออัตโนมัติทุก 15 วินาที
     st_autorefresh(interval=15000, key="map_refresh_grid")
     
-    MAP_FILE = "Gemini_Generated_Image_2fhehv2fhehv2fhe.png" 
+    MAP_FILE = "map.png" 
     
     if os.path.exists(MAP_FILE):
         try:
