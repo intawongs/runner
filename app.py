@@ -47,29 +47,62 @@ def upload_photo(file_bytes, filename):
 # --- 3. Sidebar Navigation ---
 menu = st.sidebar.radio("เมนูใช้งาน", ["📝 ลงทะเบียนนักวิ่ง", "📸 จุดสแกน+ถ่ายรูป", "🏆 Leaderboard"])
 
-# --- PAGE 1: REGISTER ---
-if menu == "📝 ลงทะเบียนนักวิ่ง":
-    st.header("📝 ลงทะเบียนพนักงาน")
+# --- PAGE 1: REGISTER (Fixed Version) ---
+if menu == "📝 ลงทะเบียนนักวิ่ง (Admin)":
+    st.header("📝 ลงทะเบียนพนักงาน (Auto BIB)")
     next_bib = get_next_bib()
     
+    # สร้างตัวแปรใน session_state เพื่อเก็บข้อมูล QR หลังกด Submit
+    if "reg_success" not in st.session_state:
+        st.session_state.reg_success = False
+        st.session_state.last_bib = ""
+        st.session_state.qr_buffer = None
+
     with st.form("reg_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            bib = st.text_input("หมายเลข BIB (Auto)", value=next_bib, disabled=True)
-            name = st.text_input("ชื่อ-นามสกุล")
-        with col2:
-            dept = st.selectbox("แผนก", ["Production", "R&D", "QA", "Logistics", "Office"])
+        st.info(f"หมายเลข BIB ถัดไปคือ: **{next_bib}**")
+        bib = st.text_input("หมายเลข BIB", value=next_bib, disabled=True)
+        name = st.text_input("ชื่อ-นามสกุลพนักงาน")
+        dept = st.selectbox("แผนก", ["Production", "R&D", "QA", "Logistics", "Maintenance", "Office"])
         
-        if st.form_submit_button("บันทึกและสร้าง QR"):
+        submitted = st.form_submit_button("บันทึกและเจน QR")
+        
+        if submitted:
             if name:
-                supabase.table("runners").insert({"bib_number": bib, "name": name, "department": dept}).execute()
-                qr_img = qrcode.make(bib)
-                buf = BytesIO()
-                qr_img.save(buf, format="PNG")
-                st.image(buf.getvalue(), caption=f"QR Code: {bib}")
-                st.download_button("โหลดรูป QR", buf.getvalue(), f"{bib}.png", "image/png")
-                time.sleep(1)
-                st.rerun()
+                try:
+                    # 1. บันทึกลง Supabase
+                    supabase.table("runners").insert({"bib_number": bib, "name": name, "department": dept}).execute()
+                    
+                    # 2. เจน QR Code และเก็บลง Buffer
+                    qr_img = qrcode.make(bib)
+                    buf = BytesIO()
+                    qr_img.save(buf, format="PNG")
+                    
+                    # 3. เก็บสถานะลง Session State (เพื่อเอาไปแสดงผลนอก Form)
+                    st.session_state.reg_success = True
+                    st.session_state.last_bib = bib
+                    st.session_state.qr_buffer = buf.getvalue()
+                    
+                except Exception as e:
+                    st.error(f"เกิดข้อผิดพลาด: {e}")
+            else:
+                st.warning("กรุณากรอกชื่อพนักงาน")
+
+    # --- ส่วนที่แสดงผลนอก Form (หลังกด Submit สำเร็จ) ---
+    if st.session_state.reg_success:
+        st.success(f"ลงทะเบียน BIB: {st.session_state.last_bib} เรียบร้อย!")
+        st.image(st.session_state.qr_buffer, caption=f"QR Code: {st.session_state.last_bib}")
+        
+        # ย้ายปุ่มดาวน์โหลดมาไว้นอก Form ตรงนี้ครับ ✅
+        st.download_button(
+            label="💾 ดาวน์โหลดรูป QR",
+            data=st.session_state.qr_buffer,
+            file_name=f"{st.session_state.last_bib}.png",
+            mime="image/png"
+        )
+        
+        if st.button("ลงทะเบียนคนถัดไป"):
+            st.session_state.reg_success = False
+            st.rerun()
 
 # --- PAGE 2: CHECKPOINT ---
 elif menu == "📸 จุดสแกน+ถ่ายรูป":
