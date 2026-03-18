@@ -121,51 +121,88 @@ elif menu == "📸 จุดสแกน Checkpoint":
             st.warning(f"⏳ {val} สแกนไปแล้ว รอสักครู่...")
 
 # --- [ หน้า 3: Leaderboard Map (Grid View + Anti-Overlap) ] ---
+# --- [ หน้า 3: Leaderboard Map - FIFO 3 Latest per Point ] ---
 elif menu == "🏆 Leaderboard Map":
-    st.header("🏆 RCI Real-time Map")
-    st_autorefresh(15000, key="map_refresh")
+    st.header("🏆 RCI Real-time Map (FIFO 3 Latest)")
+    st_autorefresh(interval=10000, key="map_refresh_fifo_v2")
     
-    MAP_FILE = "map.png"
-    # พิกัด x, y ตามที่คุณระบุ
+    MAP_FILE = "Gemini_Generated_Image_2fhehv2fhehv2fhe.png" 
+    
+    # พิกัดใหม่ที่คุณระบุ (Start/Finish อยู่โซนล่าง)
     BASE_POINTS = {
-        "Checkpoint 1": (715, 390), "Checkpoint 2": (715, 190),
-        "Start": (750, 650), "Finish": (950, 630)
+        "Checkpoint 1": (715, 390), 
+        "Checkpoint 2": (715, 190),
+        "Start": (750, 650), 
+        "Finish": (950, 630)
     }
 
     if os.path.exists(MAP_FILE):
-        bg = Image.open(MAP_FILE).convert("RGBA")
-        canvas = bg.copy(); draw = ImageDraw.Draw(canvas)
-        res = supabase.table("run_logs").select("*, runners(name, profile_url)").order("scanned_at", desc=True).execute()
-        
-        if res.data:
-            df = pd.DataFrame(res.data)
-            # เอาเฉพาะจุดล่าสุดของแต่ละคน
-            latest_per_run = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
-            # แสดงสูงสุด 9 คนต่อจุด (ตาราง 3x3)
-            display_on_map = latest_per_run.sort_values("scanned_at", ascending=False).groupby("checkpoint_name").head(9)
+        try:
+            bg = Image.open(MAP_FILE).convert("RGBA")
+            canvas = bg.copy()
+            draw = ImageDraw.Draw(canvas)
 
-            for cp_name, base_pos in BASE_POINTS.items():
-                runners = display_on_map[display_on_map['checkpoint_name'] == cp_name]
-                img_size = 55; gap = 10; total_step = img_size + gap
-                start_x = base_pos[0] - (total_step * 1.5)
-                start_y = base_pos[1] - (total_step * 1.5)
+            # 1. ดึง Log ทั้งหมดจาก Supabase
+            res = supabase.table("run_logs").select("*, runners(name, profile_url)").order("scanned_at", desc=True).execute()
+            
+            if res.data:
+                df = pd.DataFrame(res.data)
+                
+                # 2. หาจุดล่าสุดของแต่ละคน (คนละ 1 ตำแหน่งบนแผนที่)
+                latest_per_runner = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
 
-                for i, (_, row) in enumerate(runners.iterrows()):
-                    try:
-                        r_idx, c_idx = i // 3, i % 3
-                        p_img = Image.open(BytesIO(requests.get(row['runners']['profile_url']).content)).convert("RGBA")
-                        p_img = ImageOps.fit(p_img, (img_size, img_size), centering=(0.5, 0.5))
-                        mask = Image.new('L', (img_size, img_size), 0); ImageDraw.Draw(mask).ellipse((0, 0, img_size, img_size), fill=255)
-                        
-                        pos_x = int(start_x + (c_idx * total_step))
-                        pos_y = int(start_y + (r_idx * total_step))
-                        canvas.paste(p_img, (pos_x, pos_y), mask)
-                        
-                        color = "#00FFFF" if i == 0 else "#FFFFFF" # คนล่าสุดขอบสีฟ้า
-                        draw.ellipse([pos_x, pos_y, pos_x+img_size, pos_y+img_size], outline=color, width=6)
-                    except: continue
+                # 3. วนลูปราย Checkpoint เพื่อวาด 3 คนล่าสุด
+                for cp_name, base_pos in BASE_POINTS.items():
+                    # ดึง 3 คนล่าสุดของจุดนี้ (เรียงใหม่ -> เก่า)
+                    runners_at_cp = latest_per_runner[latest_per_runner['checkpoint_name'] == cp_name].head(3)
+                    
+                    gap = 25 # ระยะห่างระหว่างรูป
 
-        st.image(canvas, use_container_width=True)
+                    for i, (_, row) in enumerate(runners_at_cp.iterrows()):
+                        if row['runners']['profile_url']:
+                            try:
+                                # โหลดรูปโปรไฟล์
+                                p_res = requests.get(row['runners']['profile_url'])
+                                p_img = Image.open(BytesIO(p_res.content)).convert("RGBA")
+                                
+                                # --- Logic การแสดงผลแบบ FIFO ---
+                                # คนใหม่ล่าสุด (i=0) ขนาด 140px, คนเก่าถัดไป (i=1,2) ขนาด 100px
+                                current_size = 140 if i == 0 else 100
+                                p_img = ImageOps.fit(p_img, (current_size, current_size), centering=(0.5, 0.5))
+                                
+                                # ทำรูปวงกลม
+                                mask = Image.new('L', (current_size, current_size), 0)
+                                ImageDraw.Draw(mask).ellipse((0, 0, current_size, current_size), fill=255)
+                                
+                                # คำนวณพิกัด: เรียงจากซ้ายไปขวา (คนใหม่สุดอยู่ซ้าย)
+                                # ขยับ x ไปทางขวาเรื่อยๆ ตามลำดับ i
+                                pos_x = int(base_pos[0] - 70 + (i * (110 + gap))) 
+                                pos_y = int(base_pos[1] - (current_size // 2))
+                                
+                                # แปะรูป
+                                canvas.paste(p_img, (pos_x, pos_y), mask)
+                                
+                                # วาดเส้นขอบ: คนใหม่สุดสีฟ้า Neon (#00FFFF), คนเก่าสีขาว (#FFFFFF)
+                                b_color = "#00FFFF" if i == 0 else "#FFFFFF"
+                                b_width = 10 if i == 0 else 5
+                                draw.ellipse([pos_x, pos_y, pos_x+current_size, pos_y+current_size], outline=b_color, width=b_width)
+                                
+                                # ใส่ชื่อเล่น/BIB สั้นๆ ใต้รูป (Optional)
+                                # draw.text((pos_x + 10, pos_y + current_size + 5), row['runners']['name'][:10], fill="white")
+                                
+                            except: continue
+
+            # แสดงผลแผนที่
+            st.image(canvas, use_container_width=True, caption="📍 แผนที่ RCI Walk Rally (คนใหม่ล่าสุดจะอยู่ซ้ายสุดของกลุ่ม)")
+            
+        except Exception as e:
+            st.error(f"Error drawing map: {e}")
+    else:
+        st.error(f"❌ ไม่พบไฟล์รูป {MAP_FILE} ในโฟลเดอร์")
+
+    # --- ตาราง Leaderboard ปกติ (ด้านล่าง) ---
+    st.divider()
+    # ... (ส่วนตารางคะแนนใช้โค้ดเดิมได้เลยครับ)
     
     # ตารางคะแนนรวมด้านล่าง
     st.divider(); st.subheader("📊 อันดับนักวิ่ง")
