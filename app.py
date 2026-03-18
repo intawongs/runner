@@ -117,7 +117,7 @@ elif menu == "🏆 Leaderboard Map":
     # รีเฟรชหน้าจออัตโนมัติทุก 10 วินาที เพื่ออัปเดตตำแหน่งนักวิ่ง
     st_autorefresh(interval=10000, key="map_refresh")
     
-    MAP_FILE = "Gemini_Generated_Image_2fhehv2fhehv2fhe.png" 
+    MAP_FILE = "map.png" 
     
     if os.path.exists(MAP_FILE):
         try:
