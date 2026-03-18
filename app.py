@@ -98,42 +98,47 @@ if menu == "📝 ลงทะเบียนพนักงาน":
             st.rerun()
 
 # --- [ หน้าสแกน Checkpoint (สแกนอย่างเดียว) ] ---
-# --- [ หน้าสแกน Checkpoint (สแกนอย่างเดียว) ] ---
+# --- [ หน้าสแกน Checkpoint (ฉบับแก้สแกนเบิ้ล) ] ---
 elif menu == "📷 จุดสแกน Checkpoint":
     st.header("📷 สแกน QR เช็คอิน")
     cp = st.selectbox("จุดประจำการ", ["Start", "CP1", "CP2", "CP3", "CP4", "CP5", "Finish"])
     
-    st.write("---")
-    st.info(f"ขณะนี้คุณอยู่ที่จุด: **{cp}** (กรุณานำ QR Code มาจ่อที่กล้อง)")
+    # สร้างพื้นที่ว่างสำหรับควบคุมการแสดงผลกล้อง
+    placeholder = st.empty()
 
-    # เครื่องสแกน QR
-    scanned_bib = qrcode_scanner(key="checkpoint_scanner_unique")
+    with placeholder.container():
+        st.info(f"ขณะนี้คุณอยู่ที่จุด: **{cp}**")
+        # ใส่ Key ที่เปลี่ยนตามเวลาเล็กน้อย หรือคงที่เพื่อไม่ให้กล้องดับวูบวาบ
+        scanned_bib = qrcode_scanner(key="checkpoint_scanner_v3")
     
     if scanned_bib:
-        # 1. แสดงผลว่าตรวจพบ BIB อะไร
-        st.write(f"🔍 ตรวจพบ: **{scanned_bib}**")
+        # 1. ทันทีที่สแกนติด ให้ "ปิดกล้อง" ทันทีโดยการเคลียร์ placeholder
+        placeholder.empty()
+        
+        # 2. แสดงสถานะการประมวลผล
+        st.warning(f"⏳ กำลังบันทึก BIB: {scanned_bib} ...")
         
         try:
-            # 2. บันทึกลงตาราง run_logs ทันที
-            # เราไม่เช็ค last_scanned แล้ว เพื่อให้บันทึกได้ทุกครั้งที่สแกนติด
+            # 3. บันทึกลง Supabase
             res = supabase.table("run_logs").insert({
                 "bib_number": scanned_bib,
                 "checkpoint_name": cp
             }).execute()
             
             if res.data:
-                st.success(f"✅ บันทึกสำเร็จ: BIB {scanned_bib} ผ่านจุด {cp}")
-                st.toast(f"บันทึก {scanned_bib} เรียบร้อยแล้ว!", icon="🏃")
+                st.success(f"✅ บันทึกสำเร็จ: BIB {scanned_bib}")
+                st.balloons()
                 
-                # 3. หน่วงเวลาเล็กน้อยเพื่อให้ User เห็นว่าสำเร็จ
-                time.sleep(2)
+                # 4. **หน่วงเวลา 3 วินาที** เพื่อให้คนเดินออกไปก่อน และกันสแกนซ้ำ
+                time.sleep(3)
                 
-                # 4. บังคับรีเฟรชหน้าจอเพื่อล้างค่าตัวสแกน ให้พร้อมรับคนถัดไป
+                # 5. รีเฟรชหน้าจอเพื่อเปิดกล้องรับคนถัดไป
                 st.rerun()
                 
         except Exception as e:
-            st.error(f"❌ บันทึกไม่สำเร็จ: {e}")
-            st.info("ตรวจสอบว่า BIB นี้ลงทะเบียนหรือยัง หรือสิทธิ์ RLS ใน Supabase ถูกต้องหรือไม่")
+            st.error(f"เกิดข้อผิดพลาด: {e}")
+            if st.button("ลองใหม่"):
+                st.rerun()
 
 # --- [ Leaderboard (ดึงรูปจากตารางพนักงาน) ] ---
 elif menu == "🏆 Leaderboard":
