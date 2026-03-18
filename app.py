@@ -98,47 +98,57 @@ if menu == "📝 ลงทะเบียนพนักงาน":
             st.rerun()
 
 # --- [ หน้าสแกน Checkpoint (สแกนอย่างเดียว) ] ---
-# --- [ หน้าสแกน Checkpoint (ฉบับแก้สแกนเบิ้ล) ] ---
+# --- [ หน้าสแกน Checkpoint - แบบสแกนทีเดียวจบ ] ---
 elif menu == "📷 จุดสแกน Checkpoint":
     st.header("📷 สแกน QR เช็คอิน")
     cp = st.selectbox("จุดประจำการ", ["Start", "CP1", "CP2", "CP3", "CP4", "CP5", "Finish"])
     
-    # สร้างพื้นที่ว่างสำหรับควบคุมการแสดงผลกล้อง
-    placeholder = st.empty()
+    # 1. ใช้ตัวแปรควบคุมเพื่อไม่ให้รันซ้ำใน Loop เดียวกัน
+    if "is_processing" not in st.session_state:
+        st.session_state.is_processing = False
 
-    with placeholder.container():
-        st.info(f"ขณะนี้คุณอยู่ที่จุด: **{cp}**")
-        # ใส่ Key ที่เปลี่ยนตามเวลาเล็กน้อย หรือคงที่เพื่อไม่ให้กล้องดับวูบวาบ
-        scanned_bib = qrcode_scanner(key="checkpoint_scanner_v3")
+    st.info(f"📍 จุด: {cp} | กำลังรอสแกน...")
+
+    # 2. พื้นที่แสดงกล้อง
+    cam_area = st.empty()
     
-    if scanned_bib:
-        # 1. ทันทีที่สแกนติด ให้ "ปิดกล้อง" ทันทีโดยการเคลียร์ placeholder
-        placeholder.empty()
-        
-        # 2. แสดงสถานะการประมวลผล
-        st.warning(f"⏳ กำลังบันทึก BIB: {scanned_bib} ...")
-        
-        try:
-            # 3. บันทึกลง Supabase
-            res = supabase.table("run_logs").insert({
-                "bib_number": scanned_bib,
-                "checkpoint_name": cp
-            }).execute()
+    # ถ้ายังไม่ได้อยู่ในขั้นตอนบันทึก ให้เปิดกล้อง
+    if not st.session_state.is_processing:
+        with cam_area.container():
+            scanned_bib = qrcode_scanner(key=f"scanner_{cp}")
             
-            if res.data:
-                st.success(f"✅ บันทึกสำเร็จ: BIB {scanned_bib}")
-                st.balloons()
-                
-                # 4. **หน่วงเวลา 3 วินาที** เพื่อให้คนเดินออกไปก่อน และกันสแกนซ้ำ
-                time.sleep(3)
-                
-                # 5. รีเฟรชหน้าจอเพื่อเปิดกล้องรับคนถัดไป
-                st.rerun()
-                
-        except Exception as e:
-            st.error(f"เกิดข้อผิดพลาด: {e}")
-            if st.button("ลองใหม่"):
-                st.rerun()
+        # 3. เมื่อสแกนติด และยังไม่ได้เริ่มประมวลผล
+        if scanned_bib:
+            st.session_state.is_processing = True # ล็อคทันที!
+            cam_area.empty() # ปิดกล้องทันที!
+            
+            with st.status(f"🚀 กำลังบันทึก BIB: {scanned_bib}...") as status:
+                try:
+                    # บันทึกลง Supabase
+                    res = supabase.table("run_logs").insert({
+                        "bib_number": scanned_bib,
+                        "checkpoint_name": cp
+                    }).execute()
+                    
+                    if res.data:
+                        status.update(label=f"✅ บันทึกสำเร็จ: {scanned_bib}", state="complete", expanded=False)
+                        st.balloons()
+                        
+                        # หน่วงเวลา 2 วินาทีเพื่อให้คนวิ่งผ่านไป
+                        time.sleep(2)
+                        
+                        # ปลดล็อคและรีเซ็ตหน้าจอเพื่อรับคนใหม่
+                        st.session_state.is_processing = False
+                        st.rerun()
+                        
+                except Exception as e:
+                    st.error(f"เกิดข้อผิดพลาด: {e}")
+                    st.session_state.is_processing = False
+                    if st.button("ลองใหม่"):
+                        st.rerun()
+    else:
+        # ระหว่างที่กำลังบันทึก (is_processing = True) กล้องจะไม่ถูกวาดขึ้นมาใหม่
+        st.warning("กำลังประมวลผลข้อมูลคนก่อนหน้า...")
 
 # --- [ Leaderboard (ดึงรูปจากตารางพนักงาน) ] ---
 elif menu == "🏆 Leaderboard":
