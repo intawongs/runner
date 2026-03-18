@@ -143,10 +143,10 @@ elif menu == "🏆 Leaderboard Map":
 
                 # พิกัด x, y (อ้างอิงรูป 1024x1024)
                 POINTS = {
-                    "Checkpoint 1": (530, 800), 
-                    "Checkpoint 2": (580, 350),
-                    "Start": (530, 920),
-                    "Finish": (850, 560)
+                    "Checkpoint 1": (1000,1500 ), 
+                    "Checkpoint 2": (1250, 350),
+                    "Start": (1250, 1750),
+                    "Finish": (1250, 1750)
                 }
 
                 for _, r in display_on_map.iterrows():
