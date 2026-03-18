@@ -111,80 +111,103 @@ elif menu == "📸 จุดสแกน Checkpoint":
                 st.error("Error!"); st.session_state.is_saving = False; st.button("Reset")
 
 # --- [ หน้า 3: Leaderboard Map (Dynamic Map) ] ---
-# --- [ หน้า 3: Leaderboard Map (ฉบับเช็คไฟล์ละเอียด) ] ---
+# --- [ หน้า 3: Leaderboard Map - แสดงเฉพาะพิกัดล่าสุดของแต่ละคน ] ---
 elif menu == "🏆 Leaderboard Map":
-    st.header("🏆 RCI Real-time Map")
+    st.header("🏆 RCI Real-time Map (Latest Activity)")
+    # รีเฟรชหน้าจออัตโนมัติทุก 10 วินาที เพื่ออัปเดตตำแหน่งนักวิ่ง
     st_autorefresh(interval=10000, key="map_refresh")
     
-    # 1. ระบุชื่อไฟล์ (เช็คให้ตรงกับที่อัปโหลดขึ้น GitHub)
-    MAP_FILE = "map.png" 
+    MAP_FILE = "Gemini_Generated_Image_2fhehv2fhehv2fhe.png" 
     
-    # ตรวจสอบว่าไฟล์มีตัวตนอยู่ใน Server ไหม
     if os.path.exists(MAP_FILE):
         try:
-            # 2. โหลดรูปพื้นหลัง
+            # 1. โหลดรูปแผนที่โรงงาน RCI
             bg = Image.open(MAP_FILE).convert("RGBA")
             canvas = bg.copy()
             draw = ImageDraw.Draw(canvas)
 
-            # 3. ดึงข้อมูลนักวิ่งล่าสุด
+            # 2. ดึงข้อมูล Log ทั้งหมดจาก Supabase
             res = supabase.table("run_logs").select("*, runners(name, profile_url)").order("scanned_at", desc=True).execute()
             
             if res.data:
                 df = pd.DataFrame(res.data)
-                # พิกัด x, y (Checkpoint 1 อยู่ล่าง, 2 อยู่บน)
+                
+                # --- LOGIC สำคัญ: หาจุดล่าสุดของแต่ละคน ---
+                # เรียงเวลาจากใหม่ไปเก่า แล้วเลือกคนละ 1 แถว (อันที่ใหม่ที่สุด)
+                # วิธีนี้จะทำให้พนักงาน 1 คน มีรูปปรากฏบนแผนที่แค่จุดเดียวเท่านั้น (จุดล่าสุดที่เขาเพิ่งสแกน)
+                latest_per_runner = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
+
+                # --- LOGIC เสริม: ถ้าจุดหนึ่งมีหลายคน ให้โชว์เฉพาะคนล่าสุดของจุดนั้น ---
+                # (เพื่อไม่ให้รูปซ้อนกันจนดูไม่ออกในกรณีคนเยอะ)
+                display_on_map = latest_per_runner.sort_values("scanned_at", ascending=False).groupby("checkpoint_name").first().reset_index()
+
+                # พิกัด x, y (อ้างอิงรูป 1024x1024)
                 POINTS = {
-                    "Checkpoint 1": (1000,1500 ), 
-                    "Checkpoint 2": (1250, 350),
-                    "Start": (1250, 1750),
-                    "Finish": (1250, 1750)
+                    "Checkpoint 1": (530, 800), 
+                    "Checkpoint 2": (580, 350),
+                    "Start": (530, 920),
+                    "Finish": (850, 560)
                 }
 
-                # ดึงคนล่าสุดของแต่ละจุดมาแปะ
-                latest = df.groupby("checkpoint_name").first().reset_index()
-                for _, r in latest.iterrows():
+                for _, r in display_on_map.iterrows():
                     cp = r['checkpoint_name']
                     if cp in POINTS and r['runners']['profile_url']:
                         try:
-                            # โหลดรูปโปรไฟล์พนักงานจาก URL
+                            # 3. ดึงรูปโปรไฟล์พนักงานจาก URL Storage
                             p_res = requests.get(r['runners']['profile_url'])
                             p_img = Image.open(BytesIO(p_res.content)).convert("RGBA")
                             
-                            # ทำรูปเป็นวงกลม
-                            size = (120, 120)
+                            # 4. จัดการรูปให้เป็นวงกลม (Circle Crop)
+                            size = (120, 120) # ขนาดรูปนักวิ่งบนแผนที่
                             p_img = ImageOps.fit(p_img, size, centering=(0.5, 0.5))
                             mask = Image.new('L', size, 0)
-                            draw_mask = ImageDraw.Draw(mask)
-                            draw_mask.ellipse((0, 0) + size, fill=255)
+                            ImageDraw.Draw(mask).ellipse((0, 0) + size, fill=255)
                             
-                            # วางรูปลงพิกัด
+                            # 5. แปะรูปลงบนแผนที่ตามพิกัด
                             pos = POINTS[cp]
                             offset = (pos[0]-size[0]//2, pos[1]-size[1]//2)
                             canvas.paste(p_img, offset, mask)
                             
-                            # วาดวงกลมเรืองแสงรอบรูป
+                            # 6. วาดวงกลมเส้นขอบสีฟ้า (Neon Border) เน้นจุดล่าสุด
                             draw.ellipse([offset, (offset[0]+size[0], offset[1]+size[1])], outline="#00FFFF", width=8)
-                        except:
-                            continue # ถ้าโหลดรูปคนนี้ไม่ได้ ให้ข้ามไปคนถัดไป
+                            
+                            # 7. เขียนชื่อพนักงานกำกับ (ตัวเล็กๆ ใต้รูป)
+                            # draw.text((offset[0], offset[1]+size[1]+5), r['runners']['name'], fill="white")
+                            
+                        except Exception as e:
+                            # กรณีโหลดรูปพนักงานบางคนไม่ได้ ให้ข้ามไป
+                            continue
 
-            # 4. แสดงรูปแผนที่
-            st.image(canvas, use_container_width=True, caption="📍 แผนที่แสดงตำแหน่งนักวิ่งล่าสุดรายจุด")
+            # 8. แสดงผลรูปแผนที่บน Streamlit
+            st.image(canvas, use_container_width=True, caption="📍 ตำแหน่งล่าสุดของพนักงานแต่ละจุด (Real-time)")
             
         except Exception as e:
-            st.error(f"❌ โหลดรูปแผนที่ไม่ได้: {e}")
+            st.error(f"❌ เกิดข้อผิดพลาดในการประมวลผลแผนที่: {e}")
     else:
-        # ถ้าหาไฟล์ไม่เจอ จะแสดงข้อความเตือนนี้
-        st.error(f"❌ ไม่พบไฟล์รูป '{MAP_FILE}' ในโฟลเดอร์หลัก")
-        st.info("💡 วิธีแก้: ตรวจสอบว่าคุณได้อัปโหลดไฟล์รูปนี้ขึ้น GitHub หรือยัง? และชื่อไฟล์สะกดถูกต้องหรือไม่?")
-        # ลองลิสต์ไฟล์ที่มีทั้งหมดในโฟลเดอร์ออกมาดู (เพื่อ Debug)
-        st.write("ไฟล์ที่พบในเครื่องขณะนี้:", os.listdir("."))
-    
-    # ตาราง Leaderboard ด้านล่าง
+        st.error(f"❌ ไม่พบไฟล์รูป '{MAP_FILE}' ในโฟลเดอร์แอป")
+        st.info("กรุณาตรวจสอบว่าได้อัปโหลดรูปแผนที่ขึ้น GitHub เรียบร้อยแล้ว")
+
+    # --- ส่วนตารางคะแนน (แสดงทุกคนเพื่อความชัดเจน) ---
     st.divider()
-    res_all = supabase.table("run_logs").select("*, runners(name, department, profile_url)").execute()
-    if res_all.data:
-        df_all = pd.DataFrame([{ "รูป": r['runners']['profile_url'], "BIB": r['bib_number'], "ชื่อ": r['runners']['name'], "แผนก": r['runners']['department'], "จุด": r['checkpoint_name'], "เวลา": r['scanned_at'] } for r in res_all.data])
-        sum_df = df_all.sort_values("เวลา", ascending=False).groupby("BIB").first().reset_index()
-        cnt_df = df_all.groupby("BIB").size().reset_index(name="คะแนน")
-        final = pd.merge(sum_df, cnt_df, on="BIB").sort_values("คะแนน", ascending=False)
-        st.dataframe(final[["รูป", "BIB", "ชื่อ", "คะแนน", "จุด"]], column_config={"รูป": st.column_config.ImageColumn()})
+    st.subheader("📊 อันดับนักวิ่งทั้งหมด")
+    
+    # ดึงข้อมูลมาแสดงเป็นตารางปกติไว้ด้านล่างแผนที่
+    if res.data:
+        df_all = pd.DataFrame([{
+            "Profile": r['runners']['profile_url'],
+            "BIB": r['bib_number'],
+            "ชื่อ": r['runners']['name'],
+            "จุดล่าสุด": r['checkpoint_name'],
+            "เวลาล่าสุด": r['scanned_at']
+        } for r in res.data])
+        
+        # จัดกลุ่มเพื่อหาคะแนนสะสม (จำนวนจุดที่ผ่าน)
+        summary = df_all.sort_values("เวลาล่าสุด", ascending=False).groupby("BIB").first().reset_index()
+        counts = df_all.groupby("BIB").size().reset_index(name="คะแนนสะสม")
+        final_table = pd.merge(summary, counts, on="BIB").sort_values(["คะแนนสะสม", "เวลาล่าสุด"], ascending=[False, True])
+        
+        st.dataframe(
+            final_table[["Profile", "BIB", "ชื่อ", "คะแนนสะสม", "จุดล่าสุด"]],
+            column_config={"Profile": st.column_config.ImageColumn("รูปถ่าย")},
+            use_container_width=True
+        )
