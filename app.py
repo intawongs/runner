@@ -98,33 +98,42 @@ if menu == "📝 ลงทะเบียนพนักงาน":
             st.rerun()
 
 # --- [ หน้าสแกน Checkpoint (สแกนอย่างเดียว) ] ---
+# --- [ หน้าสแกน Checkpoint (สแกนอย่างเดียว) ] ---
 elif menu == "📷 จุดสแกน Checkpoint":
-    st.header("📷 สแกน QR เช็คอิน (ไม่ต้องถ่ายรูป)")
+    st.header("📷 สแกน QR เช็คอิน")
     cp = st.selectbox("จุดประจำการ", ["Start", "CP1", "CP2", "CP3", "CP4", "CP5", "Finish"])
     
     st.write("---")
-    # เครื่องสแกนจะเปิดค้างไว้ตลอด รอนักวิ่งมาสแกนต่อๆ กันได้เลย
-    scanned_bib = qrcode_scanner(key="checkpoint_scanner")
+    st.info(f"ขณะนี้คุณอยู่ที่จุด: **{cp}** (กรุณานำ QR Code มาจ่อที่กล้อง)")
+
+    # เครื่องสแกน QR
+    scanned_bib = qrcode_scanner(key="checkpoint_scanner_unique")
     
     if scanned_bib:
-        # ป้องกันการสแกนซ้ำคนเดิมรัวๆ ในหน้าจอเดียว
-        if "last_scanned" not in st.session_state or st.session_state.last_scanned != scanned_bib:
-            try:
-                res = supabase.table("run_logs").insert({
-                    "bib_number": scanned_bib,
-                    "checkpoint_name": cp
-                }).execute()
+        # 1. แสดงผลว่าตรวจพบ BIB อะไร
+        st.write(f"🔍 ตรวจพบ: **{scanned_bib}**")
+        
+        try:
+            # 2. บันทึกลงตาราง run_logs ทันที
+            # เราไม่เช็ค last_scanned แล้ว เพื่อให้บันทึกได้ทุกครั้งที่สแกนติด
+            res = supabase.table("run_logs").insert({
+                "bib_number": scanned_bib,
+                "checkpoint_name": cp
+            }).execute()
+            
+            if res.data:
+                st.success(f"✅ บันทึกสำเร็จ: BIB {scanned_bib} ผ่านจุด {cp}")
+                st.toast(f"บันทึก {scanned_bib} เรียบร้อยแล้ว!", icon="🏃")
                 
-                if res.data:
-                    st.success(f"✅ บันทึกสำเร็จ: BIB {scanned_bib} ผ่านจุด {cp}")
-                    st.session_state.last_scanned = scanned_bib
-                    st.toast(f"บันทึก {scanned_bib} เรียบร้อย", icon="🏃")
-                    st.balloons()
-                    time.sleep(1) # รอแป๊บนึงก่อนรับคนถัดไป
-            except:
-                st.error("ไม่พบข้อมูล BIB นี้ในระบบ หรือสแกนผิดพลาด")
-        else:
-            st.info("รอคนถัดไป...")
+                # 3. หน่วงเวลาเล็กน้อยเพื่อให้ User เห็นว่าสำเร็จ
+                time.sleep(2)
+                
+                # 4. บังคับรีเฟรชหน้าจอเพื่อล้างค่าตัวสแกน ให้พร้อมรับคนถัดไป
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"❌ บันทึกไม่สำเร็จ: {e}")
+            st.info("ตรวจสอบว่า BIB นี้ลงทะเบียนหรือยัง หรือสิทธิ์ RLS ใน Supabase ถูกต้องหรือไม่")
 
 # --- [ Leaderboard (ดึงรูปจากตารางพนักงาน) ] ---
 elif menu == "🏆 Leaderboard":
