@@ -5,3 +5,4 @@ streamlit-autorefresh
 pandas
 qrcode
 pillow
+requests
