@@ -136,7 +136,7 @@ elif menu == "🏆 Leaderboard Map":
                 POINTS = {
                     "Checkpoint 1": (530, 800), 
                     "Checkpoint 2": (580, 350),
-                    "Start": (530, 920),
+                    "Start": (530, 800),
                     "Finish": (850, 560)
                 }
 
