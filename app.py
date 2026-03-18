@@ -129,7 +129,7 @@ elif menu == "🏆 Leaderboard Map":
     # พิกัด x, y ตามที่คุณระบุ
     BASE_POINTS = {
         "Checkpoint 1": (715, 390), "Checkpoint 2": (715, 190),
-        "Start": (1250, 1750), "Finish": (1400, 1500)
+        "Start": (815, 500), "Finish": (850, 550)
     }
 
     if os.path.exists(MAP_FILE):
