@@ -134,9 +134,9 @@ elif menu == "🏆 Leaderboard Map":
                 df = pd.DataFrame(res.data)
                 # พิกัด x, y (Checkpoint 1 อยู่ล่าง, 2 อยู่บน)
                 POINTS = {
-                    "Checkpoint 1": (1000, 2500), 
+                    "Checkpoint 1": (1000,1500 ), 
                     "Checkpoint 2": (580, 350),
-                    "Start": (1000, 2500),
+                    "Start": (1000, 1500),
                     "Finish": (850, 560)
                 }
 
