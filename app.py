@@ -144,7 +144,7 @@ elif menu == "🏆 Leaderboard Map":
                 # พิกัด x, y (อ้างอิงรูป 1024x1024)
                 POINTS = {
                     "Checkpoint 1": (1000,1500 ), 
-                    "Checkpoint 2": (1000, 330),
+                    "Checkpoint 2": (700, 130),
                     "Start": (1250, 1750),
                     "Finish": (1250, 1750)
                 }
@@ -158,7 +158,7 @@ elif menu == "🏆 Leaderboard Map":
                             p_img = Image.open(BytesIO(p_res.content)).convert("RGBA")
                             
                             # 4. จัดการรูปให้เป็นวงกลม (Circle Crop)
-                            size = (50, 50) # ขนาดรูปนักวิ่งบนแผนที่
+                            size = (75, 75) # ขนาดรูปนักวิ่งบนแผนที่
                             p_img = ImageOps.fit(p_img, size, centering=(0.5, 0.5))
                             mask = Image.new('L', size, 0)
                             ImageDraw.Draw(mask).ellipse((0, 0) + size, fill=255)
