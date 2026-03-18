@@ -159,7 +159,7 @@ elif menu == "🏆 Leaderboard Map":
                     
                     # --- สร้าง Grid 3x3 (ตาราง 9 ช่อง) รอบพิกัดหลัก ---
                     # รูปพนักงานขนาด 120x120 เราจะเผื่อช่องว่าง (Gap) 20 พิกเซล
-                    img_size = 120
+                    img_size = 70
                     gap = 20
                     total_step = img_size + gap # 140 พิกเซล ต่อช่อง
 
