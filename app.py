@@ -148,6 +148,52 @@ elif menu == "📸 จุดสแกน Checkpoint":
         else:
             # กรณีสแกนซ้ำภายใน 15 วินาที ไม่ต้องทำอะไร หรือโชว์ Warning เบาๆ
             pass
+
+# --- [ หน้า 3: Leaderboard แบบแบ่งโซน Checkpoint ] ---
+# --- [ หน้า 3: Leaderboard แบบแบ่งโซน Checkpoint ] ---
+elif menu == "🏆 Leaderboard Map":
+    st.header("🏆 Real-time Race Tracker")
+    
+    # เพิ่มบรรทัดนี้เพื่อให้หน้าจอ Auto-Refresh ทุกๆ 5 วินาที
+    from streamlit_autorefresh import st_autorefresh
+    st_autorefresh(interval=5000, key="leaderboard_refresh")
+
+    # 1. ดึงข้อมูลล่าสุด
+    res = supabase.table("run_logs").select("*, runners(name, profile_url)").order("scanned_at", desc=True).execute()
+    
+    if res.data:
+        df = pd.DataFrame(res.data)
+        # กรองเอาเฉพาะจุดล่าสุดของแต่ละ BIB
+        latest_status = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
+
+        # 2. ใช้ตัวแปร Global เดียวกัน (สำคัญมาก!)
+        all_checkpoints = CHECKPOINT_LIST 
+        
+        cols = st.columns(len(all_checkpoints))
+        
+        for idx, cp_name in enumerate(all_checkpoints):
+            with cols[idx]:
+                st.markdown(f"##### 📍 {cp_name}") # ใช้หัวข้อเล็กลงหน่อยให้พอดี column
+                st.divider()
+                
+                # Filter ข้อมูลพนักงานที่อยู่จุดนี้
+                runners_here = latest_status[latest_status['checkpoint_name'] == cp_name]
+                
+                for _, runner in runners_here.iterrows():
+                    # แสดงรูปและชื่อ
+                    if runner['runners'] and runner['runners']['profile_url']:
+                        st.image(runner['runners']['profile_url'], width=70)
+                    
+                    name_display = runner['runners']['name'] if runner['runners'] else "Unknown"
+                    st.caption(f"**{name_display}**")
+                    
+                    # ตัดเวลามาโชว์ (รองรับทั้ง format ที่มี T หรือช่องว่าง)
+                    raw_time = runner['scanned_at']
+                    time_display = raw_time[11:16] if len(raw_time) > 16 else raw_time
+                    st.write(f"⏱️ {time_display}")
+                    st.divider()
+
+
 # elif menu == "📸 จุดสแกน Checkpoint":
 #     st.header("📸 จุดสแกน Checkpoint")
 #     cp_loc = st.selectbox("📍 คุณอยู่จุดไหน?", ["Start", "Checkpoint 1", "Checkpoint 2", "Finish"])
@@ -178,38 +224,7 @@ elif menu == "📸 จุดสแกน Checkpoint":
 
 # --- [ หน้า 3: Leaderboard Map (Grid View + Anti-Overlap) ] ---
 # --- [ หน้า 3: Leaderboard Map - FIFO 3 Latest per Point ] ---
-# --- [ หน้า 3: Leaderboard แบบแบ่งโซน Checkpoint ] ---
-elif menu == "🏆 Leaderboard Map":
-    st.header("🏆 Real-time Race Tracker")
-    
-    # 1. ดึงข้อมูลล่าสุดของแต่ละคน
-    res = supabase.table("run_logs").select("*, runners(name, profile_url)").order("scanned_at", desc=True).execute()
-    if res.data:
-        df = pd.DataFrame(res.data)
-        # กรองเอาเฉพาะจุดล่าสุดที่แต่ละ BIB สแกน (1 คนมี 1 ที่อยู่บนบอร์ด)
-        latest_status = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
 
-        # 2. สร้างรายการ Checkpoints ทั้งหมด
-        all_checkpoints = ["Start", "CP 1", "CP 2", "CP 3", "CP 4", "CP 5", "Finish"]
-        
-        # 3. ใช้ Columns ของ Streamlit สร้างเลน
-        cols = st.columns(len(all_checkpoints))
-        
-        for idx, cp_name in enumerate(all_checkpoints):
-            with cols[idx]:
-                st.markdown(f"### 📍 {cp_name}")
-                st.divider()
-                
-                # ดึงรายชื่อคนที่อยู่ที่จุดนี้ (เรียงจากใหม่ไปเก่า)
-                runners_here = latest_status[latest_status['checkpoint_name'] == cp_name]
-                
-                for _, runner in runners_here.iterrows():
-                    # แสดงรูปโปรไฟล์และชื่อ
-                    if runner['runners']['profile_url']:
-                        st.image(runner['runners']['profile_url'], width=80)
-                    st.caption(f"**{runner['runners']['name']}**")
-                    st.write(f"⏱️ {runner['scanned_at'][11:16]}") # แสดงเฉพาะเวลา HH:mm
-                    st.divider()
 # elif menu == "🏆 Leaderboard Map":
 #     st.header("🏆 RCI Real-time Map (FIFO 3 Latest)")
 #     st_autorefresh(interval=10000, key="map_refresh_fifo_v2")
