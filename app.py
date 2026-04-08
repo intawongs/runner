@@ -11,7 +11,8 @@ import math
 
 # --- 0. CONFIG (5 STATIONS - LOOP RUN) ---
 CP_COORDINATES = {
-    "Start": {"lat": 13.3849, "lon": 100.1914},
+    # "Start": {"lat": 13.3849, "lon": 100.1914},
+    "Start": {"lat": 13.6470, "lon": 100.3206},
     "Checkpoint 1": {"lat": 13.3859, "lon": 100.1904},
     "Checkpoint 2": {"lat": 13.3901, "lon": 100.1913},
     "Checkpoint 3": {"lat": 13.3901, "lon": 100.1917},
