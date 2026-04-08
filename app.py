@@ -154,32 +154,70 @@ elif st.session_state.page == "SCAN":
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
 # --- LEADERBOARD (5-LANE RACING) ---
+# --- LEADERBOARD (5-LANE RACING) ---
 elif st.session_state.page == "LEADERBOARD":
     st.markdown("<h2 style='text-align: center;'>🏎️ RCI RACING LANES</h2>", unsafe_allow_html=True)
     st_autorefresh(interval=5000, key="race")
     
     res = supabase.table("run_logs").select("*, runners(*)").order("scanned_at", desc=True).execute()
+    
+    # สร้าง Columns รอไว้เลย 5 คอลัมน์ (ตามจำนวน CHECKPOINT_LIST)
+    lanes = st.columns(len(CHECKPOINT_LIST))
+
+    # เตรียมข้อมูลนักวิ่งล่าสุด
+    latest = pd.DataFrame()
     if res.data:
         df = pd.DataFrame(res.data)
         latest = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
-        lanes = st.columns(len(CHECKPOINT_LIST), gap="small")
 
-        for idx, cp in enumerate(CHECKPOINT_LIST):
-            with lanes[idx]:
-                st.markdown(f"<div style='background:#2E86C1; color:white; border-radius:10px; text-align:center; padding:5px; font-size:12px;'>{cp}</div>", unsafe_allow_html=True)
-                runners = latest[latest['checkpoint_name'] == cp]
-                img_size = 60 if len(runners) <= 3 else 40
-                for _, r in runners.iterrows():
-                    img = r['runners']['profile_url'] if r['runners'] and r['runners']['profile_url'] else ""
-                    name = (r['runners']['name'] if r['runners'] else r['bib_number']).split(" ")[0]
-                    st.markdown(f"""
-                        <div style='text-align:center; margin-top:10px; animation: bounce 0.8s infinite alternate;'>
-                            <img src='{img}' style='width:{img_size}px; height:{img_size}px; border-radius:50%; border:2px solid gold; object-fit:cover;'>
-                            <p style='font-size:10px; margin:0;'>{name}</p>
-                        </div>
-                        <style>@keyframes bounce {{ from {{transform:translateY(0);}} to {{transform:translateY(-8px);}} }}</style>
-                    """, unsafe_allow_html=True)
-    st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
+    # วนลูปสร้างแต่ละเลน
+    for idx, cp in enumerate(CHECKPOINT_LIST):
+        with lanes[idx]:
+            # ส่วนหัวของเลน (ใส่สีให้ต่างกันตามความสำคัญได้)
+            header_color = "#28B463" if cp == "Finish" else "#2E86C1"
+            st.markdown(f"""
+                <div style='background:{header_color}; color:white; border-radius:10px; 
+                text-align:center; padding:8px 2px; font-size:11px; font-weight:bold; height: 50px; display: flex; align-items: center; justify-content: center;'>
+                    {cp}
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.write("") # เว้นระยะนิดนึง
+
+            # ดึงนักวิ่งที่อยู่ที่จุดนี้
+            if not latest.empty:
+                runners_in_cp = latest[latest['checkpoint_name'] == cp]
+                
+                if not runners_in_cp.empty:
+                    for _, r in runners_in_cp.iterrows():
+                        img = r['runners']['profile_url'] if r['runners'] and r['runners']['profile_url'] else "https://www.w3schools.com/howto/img_avatar.png"
+                        full_name = r['runners']['name'] if r['runners'] else r['bib_number']
+                        first_name = full_name.split(" ")[0]
+                        
+                        st.markdown(f"""
+                            <div style='text-align:center; margin-bottom:15px; animation: bounce 1s infinite alternate;'>
+                                <div style='display: inline-block; position: relative;'>
+                                    <img src='{img}' style='width:50px; height:50px; border-radius:50%; border:3px solid #F1C40F; object-fit:cover; box-shadow: 0px 4px 8px rgba(0,0,0,0.2);'>
+                                    <div style='background:white; border-radius:10px; padding:2px 5px; font-size:9px; font-weight:bold; color:#333; margin-top:-10px; position:relative; border:1px solid #ccc;'>
+                                        {first_name}
+                                    </div>
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    # ถ้าไม่มีคนในเลน ให้ใส่ช่องว่างเพื่อคงความกว้างเลนไว้
+                    st.markdown("<div style='height:100px;'></div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<div style='height:100px;'></div>", unsafe_allow_html=True)
+
+    st.markdown("""
+        <style>
+        @keyframes bounce { 
+            from { transform: translateY(0); } 
+            to { transform: translateY(-10px); } 
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
 # --- REWARD ---
 elif st.session_state.page == "REWARD":
