@@ -1,7 +1,7 @@
 streamlit
 pandas
 supabase
-streamlit-qrcode-scanner
+streamlit-js-eval
 streamlit-autorefresh
 qrcode
 pillow
