@@ -154,53 +154,64 @@ elif st.session_state.page == "SCAN":
             else: st.error(f"❌ ยังไม่อยู่ในระยะ (ห่างจาก {near} {min_d:.1f} ม.)")
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
-# --- [ หน้า LEADERBOARD: ฉบับปรับปรุงแนวตั้ง (Vertical List) ] ---
+# --- [ หน้า LEADERBOARD: ฉบับเกมวิ่งแข่ง (Racing Lanes) ] ---
 elif st.session_state.page == "LEADERBOARD":
-    st.header("🏆 อันดับนักวิ่งประจำจุด (Real-time)")
-    st_autorefresh(interval=5000, key="lb_refresh")
+    st.markdown("<h2 style='text-align: center;'>🏃‍♂️ RCI RACING 2026 🏁</h2>", unsafe_allow_html=True)
+    st_autorefresh(interval=5000, key="race_refresh")
     
     if st.button("🏠 กลับหน้าหลัก", use_container_width=True):
         change_page("HOME")
-    
-    # ดึงข้อมูลพร้อม Join กับตาราง runners
+
+    # ดึงข้อมูลล่าสุด
     res = supabase.table("run_logs").select("*, runners(*)").order("scanned_at", desc=True).execute()
     
     if res.data:
         df = pd.DataFrame(res.data)
-        # หาตำแหน่งล่าสุดของแต่ละ BIB
         latest = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
-        
-        # วนลูปแสดงทีละจุดเช็คอิน (เรียงจาก Finish ถอยกลับมา Start เพื่อให้คนชนะอยู่บนสุด)
-        for cp in reversed(CHECKPOINT_LIST):
-            runners_at_cp = latest[latest['checkpoint_name'] == cp]
-            
-            # แสดงหัวข้อจุดเช็คอินถ้ามีคนอยู่
-            if not runners_at_cp.empty:
-                st.subheader(f"📍 {cp} ({len(runners_at_cp)} คน)")
+
+        # สร้าง 7 คอลัมน์แทน 7 จุดเช็คอิน (ลู่วิ่ง)
+        lanes = st.columns(len(CHECKPOINT_LIST), gap="small")
+
+        for idx, cp in enumerate(CHECKPOINT_LIST):
+            with lanes[idx]:
+                # ส่วนหัวของลู่วิ่ง
+                header_color = "#FF4B4B" if cp == "Finish" else "#2E86C1"
+                st.markdown(f"""
+                    <div style="background-color:{header_color}; padding:5px; border-radius:10px; text-align:center; color:white; font-size:12px; font-weight:bold; margin-bottom:10px;">
+                        {cp}
+                    </div>
+                """, unsafe_allow_html=True)
                 
-                for _, r in runners_at_cp.iterrows():
-                    # สร้างกล่องสำหรับนักวิ่งแต่ละคน (ใช้ columns ภายในเพื่อให้รูปอยู่ซ้าย ข้อความอยู่ขวา)
-                    with st.container():
-                        c1, c2 = st.columns([1, 4]) # อัตราส่วนรูป 1 ส่วน : ข้อความ 4 ส่วน
+                # กรองพนักงานที่อยู่จุดนี้
+                runners_here = latest[latest['checkpoint_name'] == cp]
+                count = len(runners_here)
+                
+                if count > 0:
+                    # คำนวณขนาดรูป: ถ้าคนเยอะ (เช่น > 5 คน) ให้รูปเล็กลง
+                    img_size = 70 if count <= 3 else (50 if count <= 6 else 35)
+                    
+                    for _, r in runners_here.iterrows():
+                        img_url = r['runners']['profile_url'] if r['runners'] and r['runners']['profile_url'] else "https://cdn-icons-png.flaticon.com/512/1077/1077114.png"
+                        name = r['runners']['name'].split(" ")[0] if r['runners'] else r['bib_number'] # เอาแค่ชื่อเล่น/ชื่อแรก
                         
-                        with c1:
-                            img_url = r['runners']['profile_url'] if r['runners'] and r['runners']['profile_url'] else None
-                            if img_url:
-                                st.image(img_url, width=80)
-                            else:
-                                st.write("👤") # ไอคอนแทนถ้าไม่มีรูป
-                        
-                        with c2:
-                            name = r['runners']['name'] if r['runners'] else r['bib_number']
-                            dept = r['runners']['department'] if r['runners'] else "ทั่วไป"
-                            scan_time = parse_iso_to_thai(r['scanned_at']).strftime('%H:%M:%S')
-                            
-                            st.markdown(f"**{name}** ({r['bib_number']})")
-                            st.caption(f"🏢 แผนก: {dept} | ⏱️ เวลา: {scan_time}")
-                        
-                        st.divider() # เส้นคั่นระหว่างคน
+                        # แสดงรูปนักวิ่งแบบวงกลมพร้อมชื่อสั้นๆ
+                        st.markdown(f"""
+                            <div style="text-align:center; margin-bottom:15px; animation: bounce 1s infinite alternate;">
+                                <img src="{img_url}" style="width:{img_size}px; height:{img_size}px; border-radius:50%; border:3px solid {header_color}; object-fit:cover;">
+                                <p style="font-size:10px; font-weight:bold; margin:0;">{name}</p>
+                            </div>
+                            <style>
+                                @keyframes bounce {{
+                                    from {{ transform: translateY(0px); }}
+                                    to {{ transform: translateY(-5px); }}
+                                }}
+                            </style>
+                        """, unsafe_allow_html=True)
+                else:
+                    # ถ้าไม่มีคน ให้โชว์ลู่วิ่งว่างๆ
+                    st.markdown("<div style='height:100px; border-left:2px dashed #ddd; margin-left:50%;'></div>", unsafe_allow_html=True)
     else:
-        st.info("ยังไม่มีข้อมูลการวิ่งในขณะนี้")
+        st.info("รอสัญญาณปล่อยตัว... ยังไม่มีนักวิ่งในระบบ")
 
 elif st.session_state.page == "REWARD":
     st.header("🎁 รับรางวัล")
