@@ -12,7 +12,8 @@ import math
 # --- 0. GLOBAL CONFIG (5 STATIONS - LOOP RUN) ---
 # Start และ Finish คือพิกัดเดียวกัน (Loop)
 CP_COORDINATES = {
-    "Start": {"lat": 13.3849, "lon": 100.1914},
+    # "Start": {"lat": 13.3849, "lon": 100.1914},
+    "Start": {"lat": 13.6469, "lon": 100.3205},
     "Checkpoint 1": {"lat": 13.3859, "lon": 100.1904},
     "Checkpoint 2": {"lat": 13.3901, "lon": 100.1913},
     "Checkpoint 3": {"lat": 13.3901, "lon": 100.1917},
