@@ -148,35 +148,62 @@ elif st.session_state.page == "REGISTER":
                 st.button("ไปหน้าหลัก", on_click=change_page, args=("HOME",))
 
 # --- PAGE: SCAN (Smart GPS) ---
+# --- PAGE: SCAN (Sequential & Smart Logic) ---
 elif st.session_state.page == "SCAN":
     st.subheader(f"📍 สแกนจุดเช็คพอยท์ (BIB: {st.session_state.my_bib})")
-    loc = get_geolocation()
-    if loc:
-        lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
-        near = None; min_d = 9999
-        for cp, pos in CP_COORDINATES.items():
-            d = haversine(lat, lon, pos['lat'], pos['lon'])
-            if d < min_d: min_d = d; near = cp
-        
-        # Logic Start/Finish จุดเดียวกัน
-        if near in ["Start", "Finish"]:
-            c_start = supabase.table("run_logs").select("id").eq("bib_number", st.session_state.my_bib).eq("checkpoint_name", "Start").execute()
-            c_mid = supabase.table("run_logs").select("id").eq("bib_number", st.session_state.my_bib).in_("checkpoint_name", ["Checkpoint 1", "Checkpoint 2", "Checkpoint 3"]).execute()
-            near = "Finish" if (len(c_start.data) > 0 and len(c_mid.data) >= 3) else "Start"
-
-        if min_d <= 100:
-            st.success(f"📍 คุณอยู่ใกล้จุด: **{near}**")
-            qr = qrcode_scanner(key=f"qr_{near}")
-            if qr == near:
-                # เช็คซ้ำ
-                dup = supabase.table("run_logs").select("id").eq("bib_number", st.session_state.my_bib).eq("checkpoint_name", qr).execute()
-                if not dup.data:
-                    supabase.table("run_logs").insert({"bib_number": st.session_state.my_bib, "checkpoint_name": qr}).execute()
-                    st.balloons(); st.info(f"บันทึกจุด {qr} สำเร็จ!")
-                else: st.warning("คุณเคยสแกนจุดนี้ไปแล้ว")
-        else:
-            st.error(f"❌ ไม่อยู่ในระยะ (ห่างจาก {near} {min_d:.0f} ม.)")
+    
+    # 1. ดึงข้อมูลการสแกนเดิมของ User มาเช็คก่อน
+    res_logs = supabase.table("run_logs").select("checkpoint_name").eq("bib_number", st.session_state.my_bib).execute()
+    already_scanned = [log['checkpoint_name'] for log in res_logs.data] if res_logs.data else []
+    
+    # 2. หาว่า "จุดถัดไป" ที่ควรจะสแกนคือจุดไหน
+    next_cp_to_scan = None
+    for cp in CHECKPOINT_LIST:
+        if cp not in already_scanned:
+            next_cp_to_scan = cp
+            break
+    
+    if not next_cp_to_scan:
+        st.success("🏁 คุณสแกนครบทุกจุดแล้ว! ไปรับรางวัลที่หน้า REWARD ได้เลย")
+        if st.button("ไปหน้าสรุปผล"): change_page("REWARD")
+    else:
+        # 3. เช็คพิกัด GPS
+        loc = get_geolocation()
+        if loc:
+            lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
             
+            # หาระยะห่างจาก "จุดถัดไปที่ควรสแกน"
+            target_pos = CP_COORDINATES[next_cp_to_scan]
+            dist = haversine(lat, lon, target_pos['lat'], target_pos['lon'])
+            
+            if dist <= 100:
+                st.info(f"📍 คุณอยู่ใกล้จุด: **{next_cp_to_scan}** (ระยะ {dist:.0f} ม.)")
+                st.write(f"โปรดสแกน QR Code ของ **{next_cp_to_scan}**")
+                
+                qr = qrcode_scanner(key=f"qr_scan_{next_cp_to_scan}")
+                
+                if qr:
+                    if qr == next_cp_to_scan:
+                        # บันทึกลง Database
+                        supabase.table("run_logs").insert({
+                            "bib_number": st.session_state.my_bib, 
+                            "checkpoint_name": qr
+                        }).execute()
+                        st.balloons()
+                        st.success(f"🎉 บันทึกจุด {qr} สำเร็จ!")
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ QR ไม่ถูกต้อง! นี่คือจุด {next_cp_to_scan} แต่คุณสแกน QR ของ {qr}")
+            else:
+                # กรณีอยู่ผิดจุด หรือยังไม่ถึงจุดถัดไป
+                st.warning(f"⚠️ จุดถัดไปของคุณคือ **{next_cp_to_scan}**")
+                st.write(f"ขณะนี้คุณอยู่ห่างจากจุดนั้นประมาณ {dist:.0f} เมตร")
+                
+                # แสดงความช่วยเหลือถ้าเป็นจุด Start/Finish ที่พิกัดซ้ำกัน
+                if next_cp_to_scan == "Finish":
+                    st.caption("หมายเหตุ: จุด Finish อยู่พิกัดเดียวกับจุด Start")
+
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
 # --- PAGE: LEADERBOARD (5-Lane Fixed) ---
