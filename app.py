@@ -6,13 +6,15 @@ from streamlit_autorefresh import st_autorefresh
 import qrcode
 from io import BytesIO
 import time
+from datetime import datetime
+import pytz # เพิ่ม Library สำหรับจัดการ Timezone
 import requests
 from PIL import Image, ImageDraw, ImageOps
 import os
 
 # --- 0. GLOBAL CONFIG ---
-# ประกาศไว้บนสุดเพื่อให้ทุกเมนู (หน้า 2 และ 3) เรียกใช้ List เดียวกัน
 CHECKPOINT_LIST = ["Start", "Checkpoint 1", "Checkpoint 2", "Checkpoint 3", "Checkpoint 4", "Checkpoint 5", "Finish"]
+tz = pytz.timezone('Asia/Bangkok') # กำหนด Timezone ไทย
 
 # --- 1. CONFIG & CONNECTION ---
 st.set_page_config(page_title="RCI AI Tracker 2026", layout="wide")
@@ -50,6 +52,16 @@ def upload_photo(file_bytes, filename):
         supabase.storage.from_("runner_photos").upload(path, file_bytes, {"content-type": "image/jpeg"})
         return supabase.storage.from_("runner_photos").get_public_url(path)
     except: return None
+
+# ฟังก์ชันแปลงเวลา UTC เป็น Thai Time
+def format_thai_time(utc_time_str):
+    try:
+        # Supabase ส่งมาเป็น ISO format (e.g., 2026-04-08T01:33:15.123+00:00)
+        utc_dt = datetime.fromisoformat(utc_time_str.replace('Z', '+00:00'))
+        thai_dt = utc_dt.astimezone(tz)
+        return thai_dt.strftime("%H:%M") # คืนค่าเฉพาะ ชั่วโมง:นาที
+    except:
+        return utc_time_str[11:16] # Fallback กรณี Error ให้ตัดสตริงเอา
 
 # --- 4. SIDEBAR MENU ---
 st.sidebar.title("🏃 RCI AI Tracker")
@@ -97,8 +109,6 @@ if menu == "📝 ลงทะเบียนพนักงาน":
 # --- [ หน้า 2: จุดสแกน Checkpoint ] ---
 elif menu == "📸 จุดสแกน Checkpoint":
     st.header("📸 จุดสแกน Checkpoint")
-    
-    # ดึงจาก CHECKPOINT_LIST ที่ประกาศไว้ด้านบน
     cp_loc = st.selectbox("📍 คุณประจำอยู่จุดไหน?", CHECKPOINT_LIST)
     
     if "last_bib" not in st.session_state: st.session_state.last_bib = None
@@ -113,7 +123,6 @@ elif menu == "📸 จุดสแกน Checkpoint":
         now = time.time()
         if val != st.session_state.last_bib or (now - st.session_state.last_time) > 15:
             try:
-                # เช็คข้อมูลซ้ำที่จุดเดิม
                 check_exist = supabase.table("run_logs").select("id").eq("bib_number", val).eq("checkpoint_name", cp_loc).execute()
                 
                 if len(check_exist.data) > 0:
@@ -133,9 +142,9 @@ elif menu == "📸 จุดสแกน Checkpoint":
             except Exception as e:
                 st.error(f"เกิดข้อผิดพลาด: {e}")
 
-# --- [ หน้า 3: Leaderboard (Ranking by Lane) ] ---
+# --- [ หน้า 3: Leaderboard Map (Ranking by Lane) ] ---
 elif menu == "🏆 Leaderboard Map":
-    st.header("🏆 Real-time Race Tracker")
+    st.header("🏆 Real-time Race Tracker (Thai Time GMT+7)")
     st_autorefresh(interval=5000, key="leaderboard_refresh")
 
     res = supabase.table("run_logs").select("*, runners(name, profile_url)").order("scanned_at", desc=True).execute()
@@ -144,7 +153,6 @@ elif menu == "🏆 Leaderboard Map":
         df = pd.DataFrame(res.data)
         latest_status = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
 
-        # สร้าง Column ตามจำนวน Checkpoint
         cols = st.columns(len(CHECKPOINT_LIST))
         
         for idx, cp_name in enumerate(CHECKPOINT_LIST):
@@ -161,11 +169,10 @@ elif menu == "🏆 Leaderboard Map":
                     name_display = runner['runners']['name'] if runner['runners'] else "Unknown"
                     st.caption(f"**{name_display}**")
                     
-                    raw_time = runner['scanned_at']
-                    time_display = raw_time[11:16] if len(raw_time) > 16 else raw_time
-                    st.write(f"⏱️ {time_display}")
+                    # เรียกใช้ฟังก์ชันแปลงเวลาเป็น Thai Time
+                    thai_time = format_thai_time(runner['scanned_at'])
+                    st.write(f"⏱️ {thai_time}")
                     st.divider()
-
 
 # import streamlit as st
 # import pandas as pd
