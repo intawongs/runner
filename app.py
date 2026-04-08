@@ -11,8 +11,7 @@ import math
 
 # --- 0. CONFIG (5 STATIONS - LOOP RUN) ---
 CP_COORDINATES = {
-    # "Start": {"lat": 13.3849, "lon": 100.1914},
-    "Start": {"lat": 13.6470, "lon": 100.3206},
+    "Start": {"lat": 13.3849, "lon": 100.1914},
     "Checkpoint 1": {"lat": 13.3859, "lon": 100.1904},
     "Checkpoint 2": {"lat": 13.3901, "lon": 100.1913},
     "Checkpoint 3": {"lat": 13.3901, "lon": 100.1917},
@@ -50,9 +49,11 @@ def haversine(lat1, lon1, lat2, lon2):
 def upload_photo(file_bytes, bib):
     path = f"profile_{bib}.jpg"
     bucket = "runner_photos"
+    # ลบรูปเก่าถ้ามี (Upsert)
     try: supabase.storage.from_(bucket).remove([path])
     except: pass
-    supabase.storage.from_(bucket).upload(path, file_bytes, {"content-type": "image/jpeg"})
+    # บันทึกรูปใหม่
+    res = supabase.storage.from_(bucket).upload(path, file_bytes, {"content-type": "image/jpeg"})
     return f"{st.secrets['SUPABASE_URL']}/storage/v1/object/public/{bucket}/{path}"
 
 # --- 3. SESSION STATE ---
@@ -63,22 +64,26 @@ if "reg_step" not in st.session_state: st.session_state.reg_step = "FORM"
 def change_page(t):
     st.session_state.page = t; st.rerun()
 
+# ---------------------------------------------------------
 # --- MAIN UI ---
+# ---------------------------------------------------------
+
 if st.session_state.page == "HOME":
     st.markdown("<h1 style='text-align: center;'>🏃‍♂️ RCI AI RACING 2026 🏁</h1>", unsafe_allow_html=True)
     if not st.session_state.my_bib:
         st.button("📝 ลงทะเบียนใหม่", on_click=change_page, args=("REGISTER",), use_container_width=True, type="primary")
-        with st.expander("ล็อกอินด้วย BIB"):
+        with st.expander("ล็อกอินด้วย BIB เดิม"):
             old_bib = st.text_input("เลข BIB (เช่น RCI-001)")
-            if st.button("ตกลง"):
+            if st.button("ตกลง ล็อกอิน"):
                 st.session_state.my_bib = clean_bib(old_bib); st.rerun()
     else:
         st.success(f"📟 BIB: **{st.session_state.my_bib}**")
-        st.button("🏁 ไปหน้าสแกนเช็คอิน (One-Click)", on_click=change_page, args=("SCAN",), use_container_width=True, type="primary")
+        st.button("🏁 สแกนเช็คอิน (One-Click)", on_click=change_page, args=("SCAN",), use_container_width=True, type="primary")
         st.button("🏆 กระดานคะแนน (Leaderboard)", on_click=change_page, args=("LEADERBOARD",), use_container_width=True)
         st.button("🎁 สรุปผล & รับรางวัล", on_click=change_page, args=("REWARD",), use_container_width=True)
         if st.button("Logout"): st.session_state.my_bib = ""; st.rerun()
 
+# --- หน้า REGISTER: แก้ไขปัญหาถ่ายซ้ำและไม่ลง DB ---
 elif st.session_state.page == "REGISTER":
     st.header("📝 ลงทะเบียนนักวิ่ง")
     if st.session_state.reg_step == "FORM":
@@ -86,18 +91,40 @@ elif st.session_state.page == "REGISTER":
             n = st.text_input("ชื่อ-นามสกุล")
             d = st.selectbox("แผนก", ["Production", "R&D", "QA", "Logistics", "Office", "Maintenance"])
             if st.form_submit_button("ถัดไป"):
-                res = supabase.table("runners").select("bib_number").order("bib_number", desc=True).limit(1).execute()
-                next_bib = f"RCI-{(int(res.data[0]['bib_number'].split('-')[1])+1):03d}" if res.data else "RCI-001"
-                st.session_state.temp = {"bib": next_bib, "name": n, "dept": d}
-                st.session_state.reg_step = "PHOTO"; st.rerun()
+                if n:
+                    res = supabase.table("runners").select("bib_number").order("bib_number", desc=True).limit(1).execute()
+                    next_bib = f"RCI-{(int(res.data[0]['bib_number'].split('-')[1])+1):03d}" if res.data else "RCI-001"
+                    st.session_state.temp = {"bib": next_bib, "name": n, "dept": d}
+                    st.session_state.reg_step = "PHOTO"; st.rerun()
+                else: st.warning("กรุณากรอกชื่อ")
     elif st.session_state.reg_step == "PHOTO":
-        img = st.camera_input("ถ่ายรูปโปรไฟล์")
+        st.warning(f"ถ่ายรูปโปรไฟล์สำหรับ BIB: {st.session_state.temp['bib']}")
+        img = st.camera_input("กดถ่ายรูปหน้าตรง")
         if img:
-            url = upload_photo(img.getvalue(), st.session_state.temp['bib'])
-            supabase.table("runners").insert({"bib_number": st.session_state.temp['bib'], "name": st.session_state.temp['name'], "department": st.session_state.temp['dept'], "profile_url": url}).execute()
-            st.session_state.my_bib = st.session_state.temp['bib']; st.session_state.reg_step = "DONE"; st.rerun()
+            with st.spinner("💾 กำลังบันทึกข้อมูลลงฐานข้อมูล..."):
+                try:
+                    # 1. อัปโหลดรูป
+                    photo_url = upload_photo(img.getvalue(), st.session_state.temp['bib'])
+                    # 2. บันทึกลงตาราง runners
+                    db_res = supabase.table("runners").insert({
+                        "bib_number": st.session_state.temp['bib'],
+                        "name": st.session_state.temp['name'],
+                        "department": st.session_state.temp['dept'],
+                        "profile_url": photo_url
+                    }).execute()
+                    
+                    if db_res.data:
+                        st.session_state.my_bib = st.session_state.temp['bib']
+                        st.session_state.reg_step = "DONE"; st.rerun()
+                    else:
+                        st.error("❌ บันทึกข้อมูลลง Database ไม่สำเร็จ โปรดลองใหม่")
+                except Exception as e:
+                    st.error(f"❌ เกิดข้อผิดพลาด: {str(e)}")
+                    
     elif st.session_state.reg_step == "DONE":
-        st.success("🎉 ลงทะเบียนสำเร็จ!"); st.button("ไปหน้าหลัก", on_click=change_page, args=("HOME",)); st.session_state.reg_step = "FORM"
+        st.success(f"🎉 ลงทะเบียนสำเร็จ! BIB: {st.session_state.my_bib}")
+        st.button("ไปหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
+        st.session_state.reg_step = "FORM"
 
 elif st.session_state.page == "SCAN":
     st.header(f"🏁 เช็คอิน ({st.session_state.my_bib})")
@@ -120,14 +147,14 @@ elif st.session_state.page == "SCAN":
             qr = qrcode_scanner(key=f"sc_{near}_{time.time()}")
             if qr == near:
                 if qr not in done_cps:
-                    with st.spinner("💾 บันทึกข้อมูล..."):
+                    with st.spinner("💾 บันทึกการวิ่ง..."):
                         save_res = supabase.table("run_logs").insert({"bib_number": st.session_state.my_bib, "checkpoint_name": qr}).execute()
                         if save_res.data:
                             st.success(f"✅ บันทึก {qr} สำเร็จ!"); st.balloons(); time.sleep(2); change_page("HOME")
-                else: st.warning("เช็คอินไปแล้ว"); st.button("กลับหน้าหลัก", on_click=change_page, args=("HOME",))
+                else: st.warning("เช็คอินไปแล้ว")
         else: st.error(f"❌ ห่างเกินไป ({min_d:.1f} ม.)")
-    else: st.warning("📡 รอพิกัด..."); st.button("🔄 ดึงใหม่", on_click=st.rerun)
-    st.button("🏠 กลับ", on_click=change_page, args=("HOME",))
+    else: st.warning("📡 รอพิกัด GPS..."); st.button("🔄 ดึงใหม่", on_click=st.rerun)
+    st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",))
 
 elif st.session_state.page == "LEADERBOARD":
     st_autorefresh(interval=10000, key="lb_refresh")
@@ -159,4 +186,4 @@ elif st.session_state.page == "REWARD":
     if res.data:
         done = [r['checkpoint_name'] for r in res.data]
         for cp in CHECKPOINT_LIST: st.write(f"{'✅' if cp in done else '⚪'} {cp}")
-    st.button("🏠 กลับ", on_click=change_page, args=("HOME",))
+    st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",))
