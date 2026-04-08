@@ -6,3 +6,4 @@ pandas
 qrcode
 pillow
 requests
+pytz
