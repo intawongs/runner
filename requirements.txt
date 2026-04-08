@@ -1,8 +1,8 @@
 streamlit
+pandas
 supabase
 streamlit-qrcode-scanner
 streamlit-autorefresh
-pandas
 qrcode
 pillow
 requests
