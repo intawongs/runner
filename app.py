@@ -4,10 +4,8 @@ from supabase import create_client, Client
 from streamlit_qrcode_scanner import qrcode_scanner
 from streamlit_js_eval import get_geolocation
 from streamlit_autorefresh import st_autorefresh
-import qrcode
-from io import BytesIO
 import time
-from datetime import datetime
+from datetime import datetime, time as dt_time
 import pytz
 import math
 
@@ -24,6 +22,7 @@ CP_COORDINATES = {
 }
 CHECKPOINT_LIST = list(CP_COORDINATES.keys())
 tz = pytz.timezone('Asia/Bangkok')
+START_TIME_RUN = dt_time(7, 30) # เวลาเริ่มงาน 07:30 น.
 
 # --- 1. CONFIG & CONNECTION ---
 st.set_page_config(page_title="RCI Runner 2026", layout="wide", initial_sidebar_state="collapsed")
@@ -70,11 +69,14 @@ def upload_photo(file_bytes, filename):
         return supabase.storage.from_("runner_photos").get_public_url(path)
     except: return None
 
-def format_thai_time(utc_time_str):
+def get_thai_now():
+    return datetime.now(tz)
+
+def parse_iso_to_thai(iso_str):
     try:
-        utc_dt = datetime.fromisoformat(utc_time_str.replace('Z', '+00:00'))
-        return utc_dt.astimezone(tz).strftime("%H:%M:%S")
-    except: return utc_time_str[11:19]
+        dt = datetime.fromisoformat(iso_str.replace('Z', '+00:00'))
+        return dt.astimezone(tz)
+    except: return get_thai_now()
 
 # ---------------------------------------------------------
 # --- MAIN INTERFACE (UI) ---
@@ -84,32 +86,32 @@ def format_thai_time(utc_time_str):
 if st.session_state.page == "HOME":
     st.title("🏃 RCI AI Tracker 2026")
     st.write("---")
+    
     st.button("📝 ลงทะเบียนนักวิ่งใหม่", on_click=change_page, args=("REGISTER",), use_container_width=True, type="primary")
     st.write("")
     st.button("🏁 สแกนเช็คอินประจำจุด", on_click=change_page, args=("SCAN",), use_container_width=True)
     st.write("")
     st.button("🏆 ดูอันดับ Leaderboard", on_click=change_page, args=("LEADERBOARD",), use_container_width=True)
+    st.write("")
+    st.button("🎁 สรุปผล & รับรางวัล", on_click=change_page, args=("REWARD",), use_container_width=True)
     
     if st.session_state.my_bib:
-        st.success(f"เข้าใช้งานในชื่อ BIB: {st.session_state.my_bib}")
+        st.success(f"ล็อกอิน BIB: {st.session_state.my_bib}")
 
 # --- [ หน้า REGISTER ] ---
 elif st.session_state.page == "REGISTER":
-    st.header("📝 ลงทะเบียนนักวิ่ง")
-    
+    st.header("📝 ลงทะเบียน")
     if st.session_state.reg_step == "FORM":
         next_bib = get_next_bib()
         with st.form("reg_form"):
-            st.info(f"BIB ที่คุณจะได้รับคือ: **{next_bib}**")
+            st.info(f"BIB ที่คุณจะได้รับ: **{next_bib}**")
             name = st.text_input("ชื่อ-นามสกุล")
             dept = st.selectbox("แผนก", ["Production", "R&D", "QA", "Logistics", "Office", "Maintenance"])
             if st.form_submit_button("📸 ถัดไป: ถ่ายรูปโปรไฟล์"):
                 if name:
                     st.session_state.temp_user = {"bib": next_bib, "name": name, "dept": dept}
-                    st.session_state.reg_step = "PHOTO"
-                    st.rerun()
+                    st.session_state.reg_step = "PHOTO"; st.rerun()
                 else: st.warning("กรุณากรอกชื่อ")
-        
         if st.button("🏠 กลับหน้าหลัก", use_container_width=True): change_page("HOME")
 
     elif st.session_state.reg_step == "PHOTO":
@@ -125,112 +127,111 @@ elif st.session_state.page == "REGISTER":
                     "profile_url": p_url
                 }).execute()
                 st.session_state.my_bib = st.session_state.temp_user['bib']
-                st.session_state.reg_step = "DONE"
-                st.rerun()
+                st.session_state.reg_step = "DONE"; st.rerun()
 
     elif st.session_state.reg_step == "DONE":
         st.success(f"🎉 ลงทะเบียนสำเร็จ! BIB: {st.session_state.my_bib}")
-        if st.button("🏁 เริ่มวิ่ง (ไปหน้าเช็คอิน)", use_container_width=True, type="primary"):
-            st.session_state.reg_step = "FORM"
-            change_page("SCAN")
+        if st.button("🏁 เริ่มวิ่ง", use_container_width=True, type="primary"):
+            st.session_state.reg_step = "FORM"; change_page("SCAN")
         if st.button("🏠 กลับหน้าหลัก", use_container_width=True):
-            st.session_state.reg_step = "FORM"
-            change_page("HOME")
+            st.session_state.reg_step = "FORM"; change_page("HOME")
 
 # --- [ หน้า SCAN ] ---
 elif st.session_state.page == "SCAN":
     st.header("🏁 สแกนเช็คอิน")
-    
     my_bib = st.text_input("เลข BIB ของคุณ", value=st.session_state.my_bib).upper()
     if my_bib:
         st.session_state.my_bib = my_bib
         st.info("🛰️ ตรวจสอบพิกัด GPS...")
         loc = get_geolocation()
-        
         if loc:
             curr_lat, curr_lon = loc['coords']['latitude'], loc['coords']['longitude']
-            
-            # ค้นหาจุดที่ใกล้ที่สุด
-            nearest_cp = None
-            min_dist = 9999
+            nearest_cp = None; min_dist = 9999
             for cp, pos in CP_COORDINATES.items():
                 d = haversine(curr_lat, curr_lon, pos['lat'], pos['lon'])
-                if d < min_dist:
-                    min_dist = d
-                    nearest_cp = cp
+                if d < min_dist: min_dist = d; nearest_cp = cp
             
             if min_dist <= 100:
-                st.success(f"📍 คุณอยู่ใกล้: **{nearest_cp}** (ระยะ {min_dist:.1f} ม.)")
-                st.write("---")
-                
-                # กล้องสแกน QR
-                qr_val = qrcode_scanner(key=f"hybrid_scan_{nearest_cp}")
-                
-                if qr_val:
-                    if qr_val == nearest_cp:
-                        try:
-                            # --- 🔒 LOGIC: บังคับลำดับการเช็คอิน ---
-                            current_index = CHECKPOINT_LIST.index(qr_val)
-                            can_proceed = True
-                            
-                            if current_index > 0:
-                                prev_cp = CHECKPOINT_LIST[current_index - 1]
-                                # เช็คประวัติในฐานข้อมูลว่าผ่านจุดก่อนหน้าหรือยัง
-                                check_prev = supabase.table("run_logs").select("id").eq("bib_number", my_bib).eq("checkpoint_name", prev_cp).execute()
-                                if len(check_prev.data) == 0:
-                                    can_proceed = False
-                                    st.error(f"❌ ห้ามข้ามจุด! คุณต้องเช็คอินที่จุด **{prev_cp}** ก่อน")
+                st.success(f"📍 จุดเช็คอิน: **{nearest_cp}** (ระยะ {min_dist:.1f} ม.)")
+                qr_val = qrcode_scanner(key=f"scan_{nearest_cp}")
+                if qr_val and qr_val == nearest_cp:
+                    try:
+                        # --- 🔒 Logic: บังคับลำดับ ---
+                        current_idx = CHECKPOINT_LIST.index(qr_val)
+                        can_proceed = True
+                        if current_idx > 0:
+                            prev_cp = CHECKPOINT_LIST[current_idx - 1]
+                            check_prev = supabase.table("run_logs").select("id").eq("bib_number", my_bib).eq("checkpoint_name", prev_cp).execute()
+                            if len(check_prev.data) == 0:
+                                can_proceed = False
+                                st.error(f"❌ ห้ามข้ามจุด! กรุณาเช็คอินที่จุด **{prev_cp}** ก่อน")
 
-                            if can_proceed:
-                                # เช็คว่าสแกนจุดเดิมซ้ำหรือไม่
-                                check_dup = supabase.table("run_logs").select("id").eq("bib_number", my_bib).eq("checkpoint_name", qr_val).execute()
-                                if len(check_dup.data) > 0:
-                                    st.warning(f"คุณเช็คอินที่ {qr_val} เรียบร้อยแล้ว")
-                                else:
-                                    supabase.table("run_logs").insert({"bib_number": my_bib, "checkpoint_name": qr_val}).execute()
-                                    st.success(f"🎉 บันทึกสำเร็จ! ผ่านจุด {qr_val}")
-                                    st.balloons()
-                            # -----------------------------------
-                        except Exception as e:
-                            st.error(f"เกิดข้อผิดพลาด: {e}")
-                    else:
-                        st.error(f"❌ QR Code ไม่ถูกต้อง! กรุณาสแกน QR ของจุด {nearest_cp}")
+                        if can_proceed:
+                            check_dup = supabase.table("run_logs").select("id").eq("bib_number", my_bib).eq("checkpoint_name", qr_val).execute()
+                            if len(check_dup.data) > 0:
+                                st.warning(f"คุณเช็คอินจุด {qr_val} ไปแล้ว")
+                            else:
+                                supabase.table("run_logs").insert({"bib_number": my_bib, "checkpoint_name": qr_val}).execute()
+                                st.success(f"🎉 บันทึกสำเร็จ! ผ่านจุด {qr_val}"); st.balloons()
+                    except Exception as e: st.error(f"Error: {e}")
+            else: st.error("❌ คุณยังไม่อยู่ในจุดเช็คอิน (รัศมี 100 เมตร)")
+        else: st.warning("⚠️ โปรดเปิด GPS และอนุญาตให้เข้าถึงตำแหน่ง")
+    if st.button("🏠 กลับหน้าหลัก", use_container_width=True): change_page("HOME")
+
+# --- [ หน้า REWARD ] ---
+elif st.session_state.page == "REWARD":
+    st.header("🎁 สรุปผล & รับรางวัล")
+    my_bib = st.text_input("เลข BIB ของคุณ", value=st.session_state.my_bib).upper()
+    if my_bib:
+        res = supabase.table("run_logs").select("*").eq("bib_number", my_bib).execute()
+        logs = pd.DataFrame(res.data)
+        if not logs.empty:
+            checked_points = logs['checkpoint_name'].tolist()
+            st.subheader("📍 สถานะการเช็คอิน")
+            st.progress(len(checked_points) / len(CHECKPOINT_LIST))
+            
+            for cp in CHECKPOINT_LIST:
+                status = "✅" if cp in checked_points else "⚪"
+                st.write(f"{status} {cp}")
+            
+            if "Finish" in checked_points:
+                finish_row = logs[logs['checkpoint_name'] == "Finish"].iloc[0]
+                finish_time = parse_iso_to_thai(finish_row['scanned_at'])
+                start_dt = finish_time.replace(hour=START_TIME_RUN.hour, minute=START_TIME_RUN.minute, second=0, microsecond=0)
+                
+                duration = finish_time - start_dt
+                hours, remainder = divmod(duration.seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                
+                st.divider()
+                st.success("🎉 ยินดีด้วย! คุณวิ่งครบทุกจุดแล้ว")
+                st.metric("เวลาที่ใช้ (เริ่ม 07:30 น.)", f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+                st.info("💡 แสดงหน้านี้ให้กรรมการเพื่อรับของรางวัล")
+                if st.button("🎫 แสดงรหัสรางวัล"):
+                    st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=REWARD_{my_bib}")
             else:
-                st.error("❌ คุณยังไม่อยู่ในรัศมีเช็คอิน (กรุณาเดินไปที่ป้าย Checkpoint)")
-        else:
-            st.warning("⚠️ โปรดเปิด GPS และอนุญาตให้เข้าถึงตำแหน่งใน Browser")
-
-    st.write("---")
-    if st.button("🏠 กลับหน้าหลัก", use_container_width=True):
-        change_page("HOME")
+                st.warning(f"ยังขาดอีก {len(CHECKPOINT_LIST) - len(checked_points)} จุด")
+        else: st.info("ยังไม่มีข้อมูลการวิ่ง")
+    if st.button("🏠 กลับหน้าหลัก", use_container_width=True): change_page("HOME")
 
 # --- [ หน้า LEADERBOARD ] ---
 elif st.session_state.page == "LEADERBOARD":
     st.header("🏆 Leaderboard (Real-time)")
-    st_autorefresh(interval=5000, key="lb_refresh")
+    st_autorefresh(interval=5000, key="refresh")
+    if st.button("🏠 กลับหน้าหลัก", use_container_width=True): change_page("HOME")
     
-    if st.button("🏠 กลับหน้าหลัก", use_container_width=True):
-        change_page("HOME")
-    
-    res = supabase.table("run_logs").select("*, runners(name, profile_url, department)").order("scanned_at", desc=True).execute()
-    
+    res = supabase.table("run_logs").select("*, runners(*)").order("scanned_at", desc=True).execute()
     if res.data:
         df = pd.DataFrame(res.data)
         latest = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
-        
         cols = st.columns(len(CHECKPOINT_LIST))
         for idx, cp in enumerate(CHECKPOINT_LIST):
             with cols[idx]:
-                st.markdown(f"##### 📍 {cp}")
+                st.markdown(f"**📍 {cp}**")
                 st.divider()
-                runners_here = latest[latest['checkpoint_name'] == cp]
-                for _, r in runners_here.iterrows():
-                    if r['runners'] and r['runners']['profile_url']:
-                        st.image(r['runners']['profile_url'], width=70)
-                    
-                    name = r['runners']['name'] if r['runners'] else "Unknown"
-                    st.write(f"🏃 **{name}**")
-                    st.caption(f"⏱️ {format_thai_time(r['scanned_at'])}")
+                runners = latest[latest['checkpoint_name'] == cp]
+                for _, r in runners.iterrows():
+                    if r['runners'] and r['runners']['profile_url']: st.image(r['runners']['profile_url'], width=70)
+                    st.write(f"🏃 {r['runners']['name']}")
+                    st.caption(f"⏱️ {parse_iso_to_thai(r['scanned_at']).strftime('%H:%M:%S')}")
                     st.divider()
-    else:
-        st.info("ยังไม่มีข้อมูลการเช็คอิน")
