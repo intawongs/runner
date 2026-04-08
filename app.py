@@ -12,13 +12,13 @@ import math
 # --- 0. CONFIG ---
 # แก้ไขพิกัดให้เป็นจุดจริงหน้างาน
 CP_COORDINATES = {
-    "Start": {"lat": 13.5950, "lon": 100.6050},
-    "Checkpoint 1": {"lat": 13.5960, "lon": 100.6060},
-    "Checkpoint 2": {"lat": 13.5970, "lon": 100.6070},
-    "Checkpoint 3": {"lat": 13.5980, "lon": 100.6080},
-    "Checkpoint 4": {"lat": 13.5990, "lon": 100.6090},
-    "Checkpoint 5": {"lat": 13.6000, "lon": 100.6100},
-    "Finish": {"lat": 13.6010, "lon": 100.6110}
+    "Start": {"lat": 13.6468, "lon": 100.3205},
+    "Checkpoint 1": {"lat": 13.6468, "lon": 100.3205},
+    "Checkpoint 2": {"lat": 13.6468, "lon": 100.3205},
+    "Checkpoint 3": {"lat": 13.6468, "lon": 100.3205},
+    "Checkpoint 4": {"lat": 13.6468, "lon": 100.3205},
+    "Checkpoint 5": {"lat": 13.6468, "lon": 100.3205},
+    "Finish": {"lat": 13.6468, "lon": 100.3205}
 }
 CHECKPOINT_LIST = list(CP_COORDINATES.keys())
 tz = pytz.timezone('Asia/Bangkok')
