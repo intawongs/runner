@@ -155,15 +155,13 @@ elif st.session_state.page == "REGISTER":
                 st.button("ไปหน้าหลัก", on_click=change_page, args=("HOME",))
 
 # --- PAGE: SCAN (Smart GPS) ---
-# --- PAGE: SCAN (เวอร์ชันแก้ NameError และล็อคลำดับ) ---
+# --- PAGE: SCAN (เวอร์ชันบังคับเปิดกล้องทุกจุด) ---
 elif st.session_state.page == "SCAN":
     st.subheader(f"📍 บันทึกจุดเช็คพอยท์ (BIB: {st.session_state.my_bib})")
     
-    # 1. ดึงประวัติการสแกนเพื่อหาจุดถัดไป
     res_logs = supabase.table("run_logs").select("checkpoint_name").eq("bib_number", st.session_state.my_bib).execute()
     already_scanned = [log['checkpoint_name'] for log in res_logs.data] if res_logs.data else []
     
-    # 2. ค้นหาจุดที่ 'ต้องสแกนเป็นลำดับถัดไป'
     next_cp = None
     for cp in CHECKPOINT_LIST:
         if cp not in already_scanned:
@@ -171,10 +169,9 @@ elif st.session_state.page == "SCAN":
             break
 
     if not next_cp:
-        st.success("🏁 คุณวิ่งเข้าเส้นชัยและสแกนครบทุกจุดแล้ว!")
+        st.success("🏁 คุณสแกนครบทุกจุดแล้ว!")
         st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",))
     else:
-        # 3. ตรวจสอบพิกัด GPS เฉพาะจุดที่ต้องสแกนถัดไป
         loc = get_geolocation()
         if loc:
             lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
@@ -182,27 +179,29 @@ elif st.session_state.page == "SCAN":
             dist = haversine(lat, lon, target_coords['lat'], target_coords['lon'])
             
             if dist <= 100:
-                st.info(f"✅ คุณมาถึงจุด **{next_cp}** แล้ว (ห่าง {dist:.0f} ม.)")
-                qr = qrcode_scanner(key=f"scan_{next_cp}")
+                st.info(f"✅ คุณมาถึงจุด **{next_cp}** แล้ว")
                 
+                # --- จุดสำคัญ: แก้ไขตรงนี้ ---
+                # เพิ่ม unique_key โดยรวมชื่อจุด และจำนวนจุดที่เคยสแกน เพื่อให้ Key เปลี่ยนเสมอ
+                unique_key = f"scanner_{next_cp}_{len(already_scanned)}"
+                
+                qr = qrcode_scanner(key=unique_key)
+                # -------------------------
+
                 if qr:
                     if qr == next_cp:
-                        # บันทึกข้อมูล
                         supabase.table("run_logs").insert({
                             "bib_number": st.session_state.my_bib, 
                             "checkpoint_name": qr
                         }).execute()
                         st.balloons()
                         st.success(f"🎉 บันทึกจุด {qr} เรียบร้อย!")
-                        time.sleep(2) # ตอนนี้จะไม่ Error แล้วเพราะ import time มาแล้ว
+                        time.sleep(1.5)
                         st.rerun()
                     else:
-                        st.error(f"❌ QR ไม่ถูกต้อง! กรุณาสแกน QR ของจุด '{next_cp}'")
+                        st.error(f"❌ นี่ไม่ใช่ QR ของจุด {next_cp}")
             else:
-                st.warning(f"⚠️ จุดถัดไปที่คุณต้องสแกนคือ **{next_cp}**")
-                st.write(f"ระยะปัจจุบัน: ห่างจากจุดเป้าหมาย {dist:.0f} เมตร")
-                if next_cp == "Finish":
-                    st.caption("คำแนะนำ: จุด Finish อยู่ตำแหน่งเดียวกับจุด Start")
+                st.warning(f"⚠️ จุดถัดไปคือ **{next_cp}** (ห่าง {dist:.0f} ม.)")
 
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
