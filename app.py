@@ -7,6 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 import math
 import pytz
 from datetime import datetime
+import time
 
 # --- 0. CONFIG & STYLES ---
 CP_COORDINATES = {
@@ -148,61 +149,54 @@ elif st.session_state.page == "REGISTER":
                 st.button("ไปหน้าหลัก", on_click=change_page, args=("HOME",))
 
 # --- PAGE: SCAN (Smart GPS) ---
-# --- PAGE: SCAN (Sequential & Smart Logic) ---
+# --- PAGE: SCAN (เวอร์ชันแก้ NameError และล็อคลำดับ) ---
 elif st.session_state.page == "SCAN":
-    st.subheader(f"📍 สแกนจุดเช็คพอยท์ (BIB: {st.session_state.my_bib})")
+    st.subheader(f"📍 บันทึกจุดเช็คพอยท์ (BIB: {st.session_state.my_bib})")
     
-    # 1. ดึงข้อมูลการสแกนเดิมของ User มาเช็คก่อน
+    # 1. ดึงประวัติการสแกนเพื่อหาจุดถัดไป
     res_logs = supabase.table("run_logs").select("checkpoint_name").eq("bib_number", st.session_state.my_bib).execute()
     already_scanned = [log['checkpoint_name'] for log in res_logs.data] if res_logs.data else []
     
-    # 2. หาว่า "จุดถัดไป" ที่ควรจะสแกนคือจุดไหน
-    next_cp_to_scan = None
+    # 2. ค้นหาจุดที่ 'ต้องสแกนเป็นลำดับถัดไป'
+    next_cp = None
     for cp in CHECKPOINT_LIST:
         if cp not in already_scanned:
-            next_cp_to_scan = cp
+            next_cp = cp
             break
-    
-    if not next_cp_to_scan:
-        st.success("🏁 คุณสแกนครบทุกจุดแล้ว! ไปรับรางวัลที่หน้า REWARD ได้เลย")
-        if st.button("ไปหน้าสรุปผล"): change_page("REWARD")
+
+    if not next_cp:
+        st.success("🏁 คุณวิ่งเข้าเส้นชัยและสแกนครบทุกจุดแล้ว!")
+        st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",))
     else:
-        # 3. เช็คพิกัด GPS
+        # 3. ตรวจสอบพิกัด GPS เฉพาะจุดที่ต้องสแกนถัดไป
         loc = get_geolocation()
         if loc:
             lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
-            
-            # หาระยะห่างจาก "จุดถัดไปที่ควรสแกน"
-            target_pos = CP_COORDINATES[next_cp_to_scan]
-            dist = haversine(lat, lon, target_pos['lat'], target_pos['lon'])
+            target_coords = CP_COORDINATES[next_cp]
+            dist = haversine(lat, lon, target_coords['lat'], target_coords['lon'])
             
             if dist <= 100:
-                st.info(f"📍 คุณอยู่ใกล้จุด: **{next_cp_to_scan}** (ระยะ {dist:.0f} ม.)")
-                st.write(f"โปรดสแกน QR Code ของ **{next_cp_to_scan}**")
-                
-                qr = qrcode_scanner(key=f"qr_scan_{next_cp_to_scan}")
+                st.info(f"✅ คุณมาถึงจุด **{next_cp}** แล้ว (ห่าง {dist:.0f} ม.)")
+                qr = qrcode_scanner(key=f"scan_{next_cp}")
                 
                 if qr:
-                    if qr == next_cp_to_scan:
-                        # บันทึกลง Database
+                    if qr == next_cp:
+                        # บันทึกข้อมูล
                         supabase.table("run_logs").insert({
                             "bib_number": st.session_state.my_bib, 
                             "checkpoint_name": qr
                         }).execute()
                         st.balloons()
-                        st.success(f"🎉 บันทึกจุด {qr} สำเร็จ!")
-                        time.sleep(2)
+                        st.success(f"🎉 บันทึกจุด {qr} เรียบร้อย!")
+                        time.sleep(2) # ตอนนี้จะไม่ Error แล้วเพราะ import time มาแล้ว
                         st.rerun()
                     else:
-                        st.error(f"❌ QR ไม่ถูกต้อง! นี่คือจุด {next_cp_to_scan} แต่คุณสแกน QR ของ {qr}")
+                        st.error(f"❌ QR ไม่ถูกต้อง! กรุณาสแกน QR ของจุด '{next_cp}'")
             else:
-                # กรณีอยู่ผิดจุด หรือยังไม่ถึงจุดถัดไป
-                st.warning(f"⚠️ จุดถัดไปของคุณคือ **{next_cp_to_scan}**")
-                st.write(f"ขณะนี้คุณอยู่ห่างจากจุดนั้นประมาณ {dist:.0f} เมตร")
-                
-                # แสดงความช่วยเหลือถ้าเป็นจุด Start/Finish ที่พิกัดซ้ำกัน
-                if next_cp_to_scan == "Finish":
-                    st.caption("หมายเหตุ: จุด Finish อยู่พิกัดเดียวกับจุด Start")
+                st.warning(f"⚠️ จุดถัดไปที่คุณต้องสแกนคือ **{next_cp}**")
+                st.write(f"ระยะปัจจุบัน: ห่างจากจุดเป้าหมาย {dist:.0f} เมตร")
+                if next_cp == "Finish":
+                    st.caption("คำแนะนำ: จุด Finish อยู่ตำแหน่งเดียวกับจุด Start")
 
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
