@@ -10,6 +10,10 @@ import requests
 from PIL import Image, ImageDraw, ImageOps
 import os
 
+# --- 0. GLOBAL CONFIG ---
+# ประกาศไว้บนสุดเพื่อให้ทุกเมนู (หน้า 2 และ 3) เรียกใช้ List เดียวกัน
+CHECKPOINT_LIST = ["Start", "Checkpoint 1", "Checkpoint 2", "Checkpoint 3", "Checkpoint 4", "Checkpoint 5", "Finish"]
+
 # --- 1. CONFIG & CONNECTION ---
 st.set_page_config(page_title="RCI AI Tracker 2026", layout="wide")
 
@@ -24,7 +28,6 @@ supabase = init_connection()
 
 # --- 2. AUDIO FUNCTION (เสียงติ๊ด) ---
 def play_beep():
-    # ใช้เสียง Beep จาก URL มาตรฐาน
     beep_html = """
         <audio autoplay>
             <source src="https://www.soundjay.com/button/beep-07.wav" type="audio/wav">
@@ -91,14 +94,12 @@ if menu == "📝 ลงทะเบียนพนักงาน":
         if st.button("ลงทะเบียนคนถัดไป"):
             st.session_state.reg_step = "FORM"; st.rerun()
 
-# --- [ หน้า 2: จุดสแกน Checkpoint (Always-On + Sound) ] ---
-# --- [ หน้า 2: จุดสแกน Checkpoint (Always-On + Sound) ] ---
+# --- [ หน้า 2: จุดสแกน Checkpoint ] ---
 elif menu == "📸 จุดสแกน Checkpoint":
     st.header("📸 จุดสแกน Checkpoint")
     
-    # 1. เพิ่มจุดให้ครบตามที่ต้องการ
-    checkpoints = ["Start", "Checkpoint 1", "Checkpoint 2", "Checkpoint 3", "Checkpoint 4", "Checkpoint 5", "Finish"]
-    cp_loc = st.selectbox("📍 คุณประจำอยู่จุดไหน?", checkpoints)
+    # ดึงจาก CHECKPOINT_LIST ที่ประกาศไว้ด้านบน
+    cp_loc = st.selectbox("📍 คุณประจำอยู่จุดไหน?", CHECKPOINT_LIST)
     
     if "last_bib" not in st.session_state: st.session_state.last_bib = None
     if "last_time" not in st.session_state: st.session_state.last_time = 0
@@ -106,92 +107,260 @@ elif menu == "📸 จุดสแกน Checkpoint":
     st.info(f"ขณะนี้กำลังบันทึกข้อมูลสำหรับ: **{cp_loc}**")
     st.success("🟢 เครื่องสแกนพร้อมทำงาน พนักงานโชว์ QR Code ได้เลย")
     
-    # กล้องเปิดค้าง (Always-On)
     val = qrcode_scanner(key=f"fixed_scanner_{cp_loc}")
 
     if val:
         now = time.time()
-        # Logic: จะบันทึกก็ต่อเมื่อ (เป็นคนใหม่) หรือ (คนเดิมแต่ผ่านไปแล้ว 15 วินาที)
         if val != st.session_state.last_bib or (now - st.session_state.last_time) > 15:
-            
             try:
-                # [เสริม] เช็คก่อนว่าคนนี้เคยสแกน "จุดนี้" ไปหรือยัง เพื่อป้องกัน Data ขยะ
-                check_exist = supabase.table("run_logs") \
-                    .select("id") \
-                    .eq("bib_number", val) \
-                    .eq("checkpoint_name", cp_loc) \
-                    .execute()
+                # เช็คข้อมูลซ้ำที่จุดเดิม
+                check_exist = supabase.table("run_logs").select("id").eq("bib_number", val).eq("checkpoint_name", cp_loc).execute()
                 
                 if len(check_exist.data) > 0:
                     st.warning(f"⚠️ BIB: {val} เคยสแกนที่ {cp_loc} ไปแล้ว")
                 else:
-                    # บันทึกข้อมูล
-                    res = supabase.table("run_logs").insert({
-                        "bib_number": val, 
-                        "checkpoint_name": cp_loc
-                    }).execute()
-                    
+                    res = supabase.table("run_logs").insert({"bib_number": val, "checkpoint_name": cp_loc}).execute()
                     if res.data:
-                        play_beep() # ส่งเสียงติ๊ด
+                        play_beep()
                         st.session_state.last_bib = val
                         st.session_state.last_time = now
                         st.toast(f"✅ บันทึก BIB: {val} เรียบร้อย!", icon="🔊")
-                        st.balloons() if cp_loc == "Finish" else None # แสดงความยินดีถ้าถึงเส้นชัย
+                        if cp_loc == "Finish": st.balloons()
                         
-                        # แสดง Profile ผู้สแกนล่าสุด (ดึงชื่อจากตาราง runners)
                         runner_info = supabase.table("runners").select("name").eq("bib_number", val).single().execute()
                         runner_name = runner_info.data['name'] if runner_info.data else "ไม่ทราบชื่อ"
                         st.success(f"ล่าสุด: {val} ({runner_name}) ผ่านจุด {cp_loc} แล้ว!")
-            
             except Exception as e:
                 st.error(f"เกิดข้อผิดพลาด: {e}")
-        else:
-            # กรณีสแกนซ้ำภายใน 15 วินาที ไม่ต้องทำอะไร หรือโชว์ Warning เบาๆ
-            pass
 
-# --- [ หน้า 3: Leaderboard แบบแบ่งโซน Checkpoint ] ---
-# --- [ หน้า 3: Leaderboard แบบแบ่งโซน Checkpoint ] ---
+# --- [ หน้า 3: Leaderboard (Ranking by Lane) ] ---
 elif menu == "🏆 Leaderboard Map":
     st.header("🏆 Real-time Race Tracker")
-    
-    # เพิ่มบรรทัดนี้เพื่อให้หน้าจอ Auto-Refresh ทุกๆ 5 วินาที
-    from streamlit_autorefresh import st_autorefresh
     st_autorefresh(interval=5000, key="leaderboard_refresh")
 
-    # 1. ดึงข้อมูลล่าสุด
     res = supabase.table("run_logs").select("*, runners(name, profile_url)").order("scanned_at", desc=True).execute()
     
     if res.data:
         df = pd.DataFrame(res.data)
-        # กรองเอาเฉพาะจุดล่าสุดของแต่ละ BIB
         latest_status = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
 
-        # 2. ใช้ตัวแปร Global เดียวกัน (สำคัญมาก!)
-        all_checkpoints = CHECKPOINT_LIST 
+        # สร้าง Column ตามจำนวน Checkpoint
+        cols = st.columns(len(CHECKPOINT_LIST))
         
-        cols = st.columns(len(all_checkpoints))
-        
-        for idx, cp_name in enumerate(all_checkpoints):
+        for idx, cp_name in enumerate(CHECKPOINT_LIST):
             with cols[idx]:
-                st.markdown(f"##### 📍 {cp_name}") # ใช้หัวข้อเล็กลงหน่อยให้พอดี column
+                st.markdown(f"##### 📍 {cp_name}")
                 st.divider()
                 
-                # Filter ข้อมูลพนักงานที่อยู่จุดนี้
                 runners_here = latest_status[latest_status['checkpoint_name'] == cp_name]
                 
                 for _, runner in runners_here.iterrows():
-                    # แสดงรูปและชื่อ
                     if runner['runners'] and runner['runners']['profile_url']:
                         st.image(runner['runners']['profile_url'], width=70)
                     
                     name_display = runner['runners']['name'] if runner['runners'] else "Unknown"
                     st.caption(f"**{name_display}**")
                     
-                    # ตัดเวลามาโชว์ (รองรับทั้ง format ที่มี T หรือช่องว่าง)
                     raw_time = runner['scanned_at']
                     time_display = raw_time[11:16] if len(raw_time) > 16 else raw_time
                     st.write(f"⏱️ {time_display}")
                     st.divider()
+
+
+# import streamlit as st
+# import pandas as pd
+# from supabase import create_client, Client
+# from streamlit_qrcode_scanner import qrcode_scanner
+# from streamlit_autorefresh import st_autorefresh
+# import qrcode
+# from io import BytesIO
+# import time
+# import requests
+# from PIL import Image, ImageDraw, ImageOps
+# import os
+
+# # --- 1. CONFIG & CONNECTION ---
+# st.set_page_config(page_title="RCI AI Tracker 2026", layout="wide")
+
+# def init_connection():
+#     try:
+#         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+#     except:
+#         st.error("❌ เช็ค Secrets ใน Streamlit Cloud (URL/KEY)")
+#         st.stop()
+
+# supabase = init_connection()
+
+# # --- 2. AUDIO FUNCTION (เสียงติ๊ด) ---
+# def play_beep():
+#     # ใช้เสียง Beep จาก URL มาตรฐาน
+#     beep_html = """
+#         <audio autoplay>
+#             <source src="https://www.soundjay.com/button/beep-07.wav" type="audio/wav">
+#         </audio>
+#     """
+#     st.components.v1.html(beep_html, height=0)
+
+# # --- 3. HELPER FUNCTIONS ---
+# def get_next_bib():
+#     try:
+#         res = supabase.table("runners").select("bib_number").order("bib_number", desc=True).limit(1).execute()
+#         if not res.data: return "RCI-001"
+#         last_num = int(res.data[0]['bib_number'].split("-")[1])
+#         return f"RCI-{last_num + 1:03d}"
+#     except: return "RCI-001"
+
+# def upload_photo(file_bytes, filename):
+#     try:
+#         path = f"profile_{filename}.jpg"
+#         supabase.storage.from_("runner_photos").upload(path, file_bytes, {"content-type": "image/jpeg"})
+#         return supabase.storage.from_("runner_photos").get_public_url(path)
+#     except: return None
+
+# # --- 4. SIDEBAR MENU ---
+# st.sidebar.title("🏃 RCI AI Tracker")
+# menu = st.sidebar.radio("เมนูหลัก", ["📝 ลงทะเบียนพนักงาน", "📸 จุดสแกน Checkpoint", "🏆 Leaderboard Map"])
+
+# # --- [ หน้า 1: ลงทะเบียนพนักงาน ] ---
+# if menu == "📝 ลงทะเบียนพนักงาน":
+#     st.header("📝 ลงทะเบียนและถ่ายรูปโปรไฟล์")
+#     if "reg_step" not in st.session_state: st.session_state.reg_step = "FORM"
+
+#     if st.session_state.reg_step == "FORM":
+#         next_bib = get_next_bib()
+#         with st.form("reg_form"):
+#             st.info(f"BIB: **{next_bib}**")
+#             name = st.text_input("ชื่อ-นามสกุล")
+#             dept = st.selectbox("แผนก", ["Production", "R&D", "QA", "Logistics", "Office", "Maintenance"])
+#             if st.form_submit_button("ถัดไป: ถ่ายรูป"):
+#                 if name:
+#                     st.session_state.temp_user = {"bib": next_bib, "name": name, "dept": dept}
+#                     st.session_state.reg_step = "PHOTO"; st.rerun()
+#                 else: st.warning("กรุณากรอกชื่อ")
+
+#     elif st.session_state.reg_step == "PHOTO":
+#         st.subheader(f"📸 ถ่ายรูป: {st.session_state.temp_user['name']}")
+#         img = st.camera_input("ส่องหน้าตรงแล้วกดถ่ายรูป")
+#         if img:
+#             with st.spinner("บันทึกข้อมูล..."):
+#                 p_url = upload_photo(img.getvalue(), st.session_state.temp_user['bib'])
+#                 if p_url:
+#                     supabase.table("runners").insert({
+#                         "bib_number": st.session_state.temp_user['bib'], "name": st.session_state.temp_user['name'],
+#                         "department": st.session_state.temp_user['dept'], "profile_url": p_url
+#                     }).execute()
+#                     qr_img = qrcode.make(st.session_state.temp_user['bib'])
+#                     buf = BytesIO(); qr_img.save(buf, format="PNG")
+#                     st.session_state.reg_qr = buf.getvalue()
+#                     st.session_state.reg_step = "DONE"; st.rerun()
+
+#     elif st.session_state.reg_step == "DONE":
+#         st.success(f"✅ บันทึกสำเร็จ! BIB: {st.session_state.temp_user['bib']}")
+#         st.image(st.session_state.reg_qr, width=300, caption="👉 แคปหน้าจอเพื่อใช้สแกน")
+#         if st.button("ลงทะเบียนคนถัดไป"):
+#             st.session_state.reg_step = "FORM"; st.rerun()
+
+# # --- [ หน้า 2: จุดสแกน Checkpoint (Always-On + Sound) ] ---
+# # --- [ หน้า 2: จุดสแกน Checkpoint (Always-On + Sound) ] ---
+# elif menu == "📸 จุดสแกน Checkpoint":
+#     st.header("📸 จุดสแกน Checkpoint")
+    
+#     # 1. เพิ่มจุดให้ครบตามที่ต้องการ
+#     checkpoints = ["Start", "Checkpoint 1", "Checkpoint 2", "Checkpoint 3", "Checkpoint 4", "Checkpoint 5", "Finish"]
+#     cp_loc = st.selectbox("📍 คุณประจำอยู่จุดไหน?", checkpoints)
+    
+#     if "last_bib" not in st.session_state: st.session_state.last_bib = None
+#     if "last_time" not in st.session_state: st.session_state.last_time = 0
+
+#     st.info(f"ขณะนี้กำลังบันทึกข้อมูลสำหรับ: **{cp_loc}**")
+#     st.success("🟢 เครื่องสแกนพร้อมทำงาน พนักงานโชว์ QR Code ได้เลย")
+    
+#     # กล้องเปิดค้าง (Always-On)
+#     val = qrcode_scanner(key=f"fixed_scanner_{cp_loc}")
+
+#     if val:
+#         now = time.time()
+#         # Logic: จะบันทึกก็ต่อเมื่อ (เป็นคนใหม่) หรือ (คนเดิมแต่ผ่านไปแล้ว 15 วินาที)
+#         if val != st.session_state.last_bib or (now - st.session_state.last_time) > 15:
+            
+#             try:
+#                 # [เสริม] เช็คก่อนว่าคนนี้เคยสแกน "จุดนี้" ไปหรือยัง เพื่อป้องกัน Data ขยะ
+#                 check_exist = supabase.table("run_logs") \
+#                     .select("id") \
+#                     .eq("bib_number", val) \
+#                     .eq("checkpoint_name", cp_loc) \
+#                     .execute()
+                
+#                 if len(check_exist.data) > 0:
+#                     st.warning(f"⚠️ BIB: {val} เคยสแกนที่ {cp_loc} ไปแล้ว")
+#                 else:
+#                     # บันทึกข้อมูล
+#                     res = supabase.table("run_logs").insert({
+#                         "bib_number": val, 
+#                         "checkpoint_name": cp_loc
+#                     }).execute()
+                    
+#                     if res.data:
+#                         play_beep() # ส่งเสียงติ๊ด
+#                         st.session_state.last_bib = val
+#                         st.session_state.last_time = now
+#                         st.toast(f"✅ บันทึก BIB: {val} เรียบร้อย!", icon="🔊")
+#                         st.balloons() if cp_loc == "Finish" else None # แสดงความยินดีถ้าถึงเส้นชัย
+                        
+#                         # แสดง Profile ผู้สแกนล่าสุด (ดึงชื่อจากตาราง runners)
+#                         runner_info = supabase.table("runners").select("name").eq("bib_number", val).single().execute()
+#                         runner_name = runner_info.data['name'] if runner_info.data else "ไม่ทราบชื่อ"
+#                         st.success(f"ล่าสุด: {val} ({runner_name}) ผ่านจุด {cp_loc} แล้ว!")
+            
+#             except Exception as e:
+#                 st.error(f"เกิดข้อผิดพลาด: {e}")
+#         else:
+#             # กรณีสแกนซ้ำภายใน 15 วินาที ไม่ต้องทำอะไร หรือโชว์ Warning เบาๆ
+#             pass
+
+# # --- [ หน้า 3: Leaderboard แบบแบ่งโซน Checkpoint ] ---
+# # --- [ หน้า 3: Leaderboard แบบแบ่งโซน Checkpoint ] ---
+# elif menu == "🏆 Leaderboard Map":
+#     st.header("🏆 Real-time Race Tracker")
+    
+#     # เพิ่มบรรทัดนี้เพื่อให้หน้าจอ Auto-Refresh ทุกๆ 5 วินาที
+#     from streamlit_autorefresh import st_autorefresh
+#     st_autorefresh(interval=5000, key="leaderboard_refresh")
+
+#     # 1. ดึงข้อมูลล่าสุด
+#     res = supabase.table("run_logs").select("*, runners(name, profile_url)").order("scanned_at", desc=True).execute()
+    
+#     if res.data:
+#         df = pd.DataFrame(res.data)
+#         # กรองเอาเฉพาะจุดล่าสุดของแต่ละ BIB
+#         latest_status = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
+
+#         # 2. ใช้ตัวแปร Global เดียวกัน (สำคัญมาก!)
+#         all_checkpoints = CHECKPOINT_LIST 
+        
+#         cols = st.columns(len(all_checkpoints))
+        
+#         for idx, cp_name in enumerate(all_checkpoints):
+#             with cols[idx]:
+#                 st.markdown(f"##### 📍 {cp_name}") # ใช้หัวข้อเล็กลงหน่อยให้พอดี column
+#                 st.divider()
+                
+#                 # Filter ข้อมูลพนักงานที่อยู่จุดนี้
+#                 runners_here = latest_status[latest_status['checkpoint_name'] == cp_name]
+                
+#                 for _, runner in runners_here.iterrows():
+#                     # แสดงรูปและชื่อ
+#                     if runner['runners'] and runner['runners']['profile_url']:
+#                         st.image(runner['runners']['profile_url'], width=70)
+                    
+#                     name_display = runner['runners']['name'] if runner['runners'] else "Unknown"
+#                     st.caption(f"**{name_display}**")
+                    
+#                     # ตัดเวลามาโชว์ (รองรับทั้ง format ที่มี T หรือช่องว่าง)
+#                     raw_time = runner['scanned_at']
+#                     time_display = raw_time[11:16] if len(raw_time) > 16 else raw_time
+#                     st.write(f"⏱️ {time_display}")
+#                     st.divider()
 
 
 # elif menu == "📸 จุดสแกน Checkpoint":
