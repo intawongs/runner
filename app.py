@@ -13,7 +13,7 @@ import math
 # ** สำคัญ: กรุณาเปลี่ยนพิกัด Lat, Lon เป็นค่าจริงของแต่ละจุดหน้างาน **
 CP_COORDINATES = {
     "Start": {"lat": 13.3849, "lon": 100.1914},
-    "Checkpoint 1": {"lat": 13.5960, "lon": 100.6060},
+    "Checkpoint 1": {"lat": 13.3849, "lon": 100.1914},
     "Checkpoint 2": {"lat": 13.5970, "lon": 100.6070},
     "Checkpoint 3": {"lat": 13.5980, "lon": 100.6080},
     "Checkpoint 4": {"lat": 13.5990, "lon": 100.6090},
