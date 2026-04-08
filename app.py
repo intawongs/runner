@@ -60,12 +60,31 @@ def haversine(lat1, lon1, lat2, lon2):
     a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
 
+# def upload_photo(file_bytes, filename):
+#     try:
+#         path = f"profile_{filename}.jpg"
+#         supabase.storage.from_("runner_photos").upload(path, file_bytes, {"content-type": "image/jpeg"})
+#         return supabase.storage.from_("runner_photos").get_public_url(path)
+#     except: return None
+
 def upload_photo(file_bytes, filename):
     try:
         path = f"profile_{filename}.jpg"
-        supabase.storage.from_("runner_photos").upload(path, file_bytes, {"content-type": "image/jpeg"})
-        return supabase.storage.from_("runner_photos").get_public_url(path)
-    except: return None
+        # ใช้ชื่อ bucket ให้ตรงกับในรูป (ตัวพิมพ์เล็ก)
+        bucket_name = "runner_photos" 
+        
+        supabase.storage.from_(bucket_name).upload(
+            path, 
+            file_bytes, 
+            {"content-type": "image/jpeg", "x-upsert": "true"}
+        )
+        
+        # คืนค่า URL ที่ถูกต้อง
+        project_url = st.secrets["SUPABASE_URL"]
+        return f"{project_url}/storage/v1/object/public/{bucket_name}/{path}"
+    except Exception as e:
+        st.error(f"Upload Error: {e}")
+        return None
 
 def parse_iso_to_thai(iso_str):
     try:
