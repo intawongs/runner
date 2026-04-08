@@ -92,33 +92,89 @@ if menu == "📝 ลงทะเบียนพนักงาน":
             st.session_state.reg_step = "FORM"; st.rerun()
 
 # --- [ หน้า 2: จุดสแกน Checkpoint (Always-On + Sound) ] ---
+# --- [ หน้า 2: จุดสแกน Checkpoint (Always-On + Sound) ] ---
 elif menu == "📸 จุดสแกน Checkpoint":
     st.header("📸 จุดสแกน Checkpoint")
-    cp_loc = st.selectbox("📍 คุณอยู่จุดไหน?", ["Start", "Checkpoint 1", "Checkpoint 2", "Finish"])
+    
+    # 1. เพิ่มจุดให้ครบตามที่ต้องการ
+    checkpoints = ["Start", "Checkpoint 1", "Checkpoint 2", "Checkpoint 3", "Checkpoint 4", "Checkpoint 5", "Finish"]
+    cp_loc = st.selectbox("📍 คุณประจำอยู่จุดไหน?", checkpoints)
     
     if "last_bib" not in st.session_state: st.session_state.last_bib = None
     if "last_time" not in st.session_state: st.session_state.last_time = 0
 
-    st.success("🟢 กล้องพร้อมทำงาน พนักงานเดินมาสแกนได้เลย")
+    st.info(f"ขณะนี้กำลังบันทึกข้อมูลสำหรับ: **{cp_loc}**")
+    st.success("🟢 เครื่องสแกนพร้อมทำงาน พนักงานโชว์ QR Code ได้เลย")
     
     # กล้องเปิดค้าง (Always-On)
     val = qrcode_scanner(key=f"fixed_scanner_{cp_loc}")
 
     if val:
         now = time.time()
-        # เช็ค Cooldown กันสแกนเบิ้ล (10 วินาทีสำหรับคนเดิม)
-        if val != st.session_state.last_bib or (now - st.session_state.last_time) > 10:
+        # Logic: จะบันทึกก็ต่อเมื่อ (เป็นคนใหม่) หรือ (คนเดิมแต่ผ่านไปแล้ว 15 วินาที)
+        if val != st.session_state.last_bib or (now - st.session_state.last_time) > 15:
+            
             try:
-                res = supabase.table("run_logs").insert({"bib_number": val, "checkpoint_name": cp_loc}).execute()
-                if res.data:
-                    play_beep() # เสียงติ๊ด
-                    st.session_state.last_bib = val
-                    st.session_state.last_time = now
-                    st.toast(f"✅ บันทึก BIB: {val} เรียบร้อย!", icon="🔊")
-                    st.success(f"ล่าสุด: {val} ผ่านจุด {cp_loc}")
-            except: st.error("บันทึกไม่สำเร็จ เช็คเลข BIB ในระบบ")
+                # [เสริม] เช็คก่อนว่าคนนี้เคยสแกน "จุดนี้" ไปหรือยัง เพื่อป้องกัน Data ขยะ
+                check_exist = supabase.table("run_logs") \
+                    .select("id") \
+                    .eq("bib_number", val) \
+                    .eq("checkpoint_name", cp_loc) \
+                    .execute()
+                
+                if len(check_exist.data) > 0:
+                    st.warning(f"⚠️ BIB: {val} เคยสแกนที่ {cp_loc} ไปแล้ว")
+                else:
+                    # บันทึกข้อมูล
+                    res = supabase.table("run_logs").insert({
+                        "bib_number": val, 
+                        "checkpoint_name": cp_loc
+                    }).execute()
+                    
+                    if res.data:
+                        play_beep() # ส่งเสียงติ๊ด
+                        st.session_state.last_bib = val
+                        st.session_state.last_time = now
+                        st.toast(f"✅ บันทึก BIB: {val} เรียบร้อย!", icon="🔊")
+                        st.balloons() if cp_loc == "Finish" else None # แสดงความยินดีถ้าถึงเส้นชัย
+                        
+                        # แสดง Profile ผู้สแกนล่าสุด (ดึงชื่อจากตาราง runners)
+                        runner_info = supabase.table("runners").select("name").eq("bib_number", val).single().execute()
+                        runner_name = runner_info.data['name'] if runner_info.data else "ไม่ทราบชื่อ"
+                        st.success(f"ล่าสุด: {val} ({runner_name}) ผ่านจุด {cp_loc} แล้ว!")
+            
+            except Exception as e:
+                st.error(f"เกิดข้อผิดพลาด: {e}")
         else:
-            st.warning(f"⏳ {val} สแกนไปแล้ว รอสักครู่...")
+            # กรณีสแกนซ้ำภายใน 15 วินาที ไม่ต้องทำอะไร หรือโชว์ Warning เบาๆ
+            pass
+# elif menu == "📸 จุดสแกน Checkpoint":
+#     st.header("📸 จุดสแกน Checkpoint")
+#     cp_loc = st.selectbox("📍 คุณอยู่จุดไหน?", ["Start", "Checkpoint 1", "Checkpoint 2", "Finish"])
+    
+#     if "last_bib" not in st.session_state: st.session_state.last_bib = None
+#     if "last_time" not in st.session_state: st.session_state.last_time = 0
+
+#     st.success("🟢 กล้องพร้อมทำงาน พนักงานเดินมาสแกนได้เลย")
+    
+#     # กล้องเปิดค้าง (Always-On)
+#     val = qrcode_scanner(key=f"fixed_scanner_{cp_loc}")
+
+#     if val:
+#         now = time.time()
+#         # เช็ค Cooldown กันสแกนเบิ้ล (10 วินาทีสำหรับคนเดิม)
+#         if val != st.session_state.last_bib or (now - st.session_state.last_time) > 10:
+#             try:
+#                 res = supabase.table("run_logs").insert({"bib_number": val, "checkpoint_name": cp_loc}).execute()
+#                 if res.data:
+#                     play_beep() # เสียงติ๊ด
+#                     st.session_state.last_bib = val
+#                     st.session_state.last_time = now
+#                     st.toast(f"✅ บันทึก BIB: {val} เรียบร้อย!", icon="🔊")
+#                     st.success(f"ล่าสุด: {val} ผ่านจุด {cp_loc}")
+#             except: st.error("บันทึกไม่สำเร็จ เช็คเลข BIB ในระบบ")
+#         else:
+#             st.warning(f"⏳ {val} สแกนไปแล้ว รอสักครู่...")
 
 # --- [ หน้า 3: Leaderboard Map (Grid View + Anti-Overlap) ] ---
 # --- [ หน้า 3: Leaderboard Map - FIFO 3 Latest per Point ] ---
