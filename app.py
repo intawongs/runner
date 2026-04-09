@@ -8,6 +8,7 @@ import math
 import pytz
 from datetime import datetime
 import time
+import streamlit.components.v1 as components # เพิ่มบรรทัดนี้ไว้บนสุดของไฟล์ด้วยครับ
 
 # --- 0. CONFIG & STYLES ---
 CP_COORDINATES = {
@@ -240,7 +241,8 @@ elif st.session_state.page == "LEADERBOARD":
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
 # --- PAGE: REWARD ---
-# --- PAGE: REWARD (Safe HTML Version) ---
+
+# --- PAGE: REWARD (Final Fix - ใช้ HTML Component) ---
 elif st.session_state.page == "REWARD":
     st.markdown("<h2 style='text-align: center;'>🎊 FINISHER CELEBRATION 🎊</h2>", unsafe_allow_html=True)
     
@@ -257,41 +259,36 @@ elif st.session_state.page == "REWARD":
             finish_row = logs[logs['checkpoint_name'] == "Finish"].iloc[0]
             finish_time = pd.to_datetime(finish_row['scanned_at']).astimezone(tz).strftime('%H:%M:%S')
 
-            # ใช้ Template แบบไม่มี f-string เพื่อป้องกันปัญหาปีกกา CSS
-            html_template = """
-            <div style="background: white; padding: 30px; border-radius: 20px; border: 5px solid #D4AF37; text-align: center; box-shadow: 0px 10px 30px rgba(0,0,0,0.1); max-width: 450px; margin: 20px auto;">
-                <h3 style="color: #D4AF37; margin-bottom: 5px;">CONGRATULATIONS!</h3>
-                <p style="color: #666; font-size: 14px; margin-top: 0;">OFFICIAL FINISHER OF RCI RACING 2026</p>
-                
-                <div style="position: relative; display: inline-block; margin: 25px 0;">
-                    <img src="URL_HOLDER" style="width: 180px; height: 180px; border-radius: 50%; border: 6px solid #D4AF37; object-fit: cover;">
-                    <div style="position: absolute; bottom: 5px; right: 5px; background: #D4AF37; color: white; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 12px;">🏆 FINISHER</div>
-                </div>
-                
-                <h2 style="margin: 10px 0; color: #2C3E50;">NAME_HOLDER</h2>
-                <p style="font-size: 20px; color: #D4AF37; font-weight: bold; margin: 0;">BIB: BIB_HOLDER</p>
-                
-                <div style="border-top: 2px dashed #eee; margin: 25px 0; padding-top: 20px;">
-                    <p style="font-size: 12px; color: #999; margin-bottom: 5px;">COMPLETED AT</p>
-                    <p style="font-size: 22px; font-weight: bold; color: #2C3E50;">TIME_HOLDER น.</p>
+            # สร้าง HTML Content แยกออกมา
+            html_content = f"""
+            <div style="font-family: sans-serif; display: flex; justify-content: center; padding: 20px;">
+                <div style="background: white; padding: 30px; border-radius: 20px; border: 5px solid #D4AF37; text-align: center; box-shadow: 0px 10px 30px rgba(0,0,0,0.1); width: 350px;">
+                    <h3 style="color: #D4AF37; margin-bottom: 5px; font-size: 20px;">CONGRATULATIONS!</h3>
+                    <p style="color: #666; font-size: 12px; margin-top: 0;">OFFICIAL FINISHER OF RCI RACING 2026</p>
+                    
+                    <div style="position: relative; display: inline-block; margin: 20px 0;">
+                        <img src="{runner['profile_url']}" style="width: 180px; height: 180px; border-radius: 50%; border: 6px solid #D4AF37; object-fit: cover;">
+                        <div style="position: absolute; bottom: 5px; right: 5px; background: #D4AF37; color: white; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 10px;">🏆 FINISHER</div>
+                    </div>
+                    
+                    <h2 style="margin: 10px 0; color: #2C3E50; font-size: 24px;">{runner['name']}</h2>
+                    <p style="font-size: 18px; color: #D4AF37; font-weight: bold; margin: 0;">BIB: {runner['bib_number']}</p>
+                    
+                    <div style="border-top: 2px dashed #eee; margin: 20px 0; padding-top: 15px;">
+                        <p style="font-size: 11px; color: #999; margin-bottom: 5px;">COMPLETED AT</p>
+                        <p style="font-size: 20px; font-weight: bold; color: #2C3E50;">{finish_time} น.</p>
+                    </div>
                 </div>
             </div>
             """
             
-            # ทำการแทนที่ค่าตัวแปรลงใน Template
-            final_html = html_template.replace("URL_HOLDER", runner['profile_url']) \
-                                      .replace("NAME_HOLDER", runner['name']) \
-                                      .replace("BIB_HOLDER", runner['bib_number']) \
-                                      .replace("TIME_HOLDER", finish_time)
-
-            # สั่ง Render HTML
-            st.markdown(final_html, unsafe_allow_html=True)
+            # ใช้ components.html แทน st.markdown
+            # กำหนดความสูง (height) ให้พอดีกับการ์ด
+            components.html(html_content, height=550, scrolling=False)
             
         else:
             st.warning("⚠️ ยังวิ่งไม่ครบทุกจุด!")
             st.progress(len(checked) / len(CHECKPOINT_LIST))
-            for cp in CHECKPOINT_LIST:
-                st.write(f"{'✅' if cp in checked else '⚪'} {cp}")
     
     st.divider()
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
