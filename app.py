@@ -241,54 +241,130 @@ elif st.session_state.page == "LEADERBOARD":
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
 # --- PAGE: REWARD ---
+# --- PAGE: REWARD (Safe HTML Version) ---
+import streamlit as st
+import pandas as pd
+# ... (import อื่นๆ เหมือนเดิม) ...
+import base64 # <--- 🔥 เพิ่ม import นี้ไว้บนสุดของไฟล์ครับ 🔥
+from PIL import Image
+import os
 
-# --- PAGE: REWARD (Final Fix - ใช้ HTML Component) ---
+# --- (โค้ดส่วน CONFIG, CONNECTION, HELPERS เหมือนเดิม) ---
+
+# --- PAGE: REWARD (ฉบับสมบูรณ์ ใช้ base64 ฝังรูป badge.jpg จากโฟลเดอร์) ---
 elif st.session_state.page == "REWARD":
     st.markdown("<h2 style='text-align: center;'>🎊 FINISHER CELEBRATION 🎊</h2>", unsafe_allow_html=True)
     
-    res_runner = supabase.table("runners").select("*").eq("bib_number", st.session_state.my_bib).single().execute()
-    res_logs = supabase.table("run_logs").select("*").eq("bib_number", st.session_state.my_bib).execute()
-    
-    if res_runner.data and res_logs.data:
-        runner = res_runner.data
-        logs = pd.DataFrame(res_logs.data)
-        checked = logs['checkpoint_name'].tolist()
+    try:
+        res_runner = supabase.table("runners").select("*").eq("bib_number", st.session_state.my_bib).single().execute()
+        res_logs = supabase.table("run_logs").select("*").eq("bib_number", st.session_state.my_bib).execute()
         
-        if "Finish" in checked:
-            st.balloons()
-            finish_row = logs[logs['checkpoint_name'] == "Finish"].iloc[0]
-            finish_time = pd.to_datetime(finish_row['scanned_at']).astimezone(tz).strftime('%H:%M:%S')
+        if res_runner.data and res_logs.data:
+            runner = res_runner.data
+            logs = pd.DataFrame(res_logs.data)
+            checked = logs['checkpoint_name'].tolist()
+            
+            # ตรวจสอบว่าสแกน Finish หรือยัง
+            if "Finish" in checked:
+                st.balloons() # ยิงลูกโป่งฉลอง
+                
+                # หาเวลาที่เข้าเส้นชัย
+                finish_row = logs[logs['checkpoint_name'] == "Finish"].iloc[0]
+                finish_time = pd.to_datetime(finish_row['scanned_at']).astimezone(tz)
+                
+                # 🔥 1. ฟังก์ชันแปลงรูปภาพท้องถิ่นเป็น Base64 String 🔥
+                def get_base64_of_bin_file(bin_file):
+                    with open(bin_file, 'rb') as f:
+                        data = f.read()
+                    return base64.b64encode(data).decode()
 
-            # สร้าง HTML Content แยกออกมา
-            html_content = f"""
-            <div style="font-family: sans-serif; display: flex; justify-content: center; padding: 20px;">
-                <div style="background: white; padding: 30px; border-radius: 20px; border: 5px solid #D4AF37; text-align: center; box-shadow: 0px 10px 30px rgba(0,0,0,0.1); width: 350px;">
-                    <h3 style="color: #D4AF37; margin-bottom: 5px; font-size: 20px;">CONGRATULATIONS!</h3>
-                    <p style="color: #666; font-size: 12px; margin-top: 0;">OFFICIAL FINISHER OF RCI RACING 2026</p>
+                # 🔥 2. กำหนด Path ของไฟล์ badge.jpg (สมมติว่าอยู่โฟลเดอร์เดียวกับ app.py) 🔥
+                img_path = 'badge.jpg' 
+                
+                # ตรวจสอบว่ามีไฟล์จริงไหม เพื่อป้องกัน Error
+                if os.path.exists(img_path):
+                    # 🔥 3. แปลงรูปเป็น Base64 String 🔥
+                    img_base64 = get_base64_of_bin_file(img_path)
                     
-                    <div style="position: relative; display: inline-block; margin: 20px 0;">
-                        <img src="{runner['profile_url']}" style="width: 180px; height: 180px; border-radius: 50%; border: 6px solid #D4AF37; object-fit: cover;">
-                        <div style="position: absolute; bottom: 5px; right: 5px; background: #D4AF37; color: white; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 10px;">🏆 FINISHER</div>
+                    # 🔥 4. สร้าง Data URI สำหรับใช้ใน HTML 🔥
+                    medal_uri = f"data:image/jpeg;base64,{img_base64}"
+                else:
+                    # กรณีไม่มีไฟล์ ให้ใช้ URL สำรองหรือรูปว่างเปล่า
+                    st.error(f"❌ ไม่พบไฟล์ {img_path} ในโฟลเดอร์แอป!")
+                    medal_uri = "https://www.w3schools.com/howto/img_avatar.png" # รูปสำรอง
+
+                # --- ส่วนแสดงการ์ด Congratulation (HTML + CSS) ---
+                st.markdown(f"""
+                    <div style="
+                        background: white;
+                        padding: 30px;
+                        border-radius: 20px;
+                        border: 5px solid #D4AF37;
+                        text-align: center;
+                        box-shadow: 0px 10px 30px rgba(0,0,0,0.1);
+                        max-width: 450px;
+                        margin: 20px auto;
+                        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                    ">
+                        <h3 style="color: #D4AF37; margin-bottom: 5px; letter-spacing: 2px;">CONGRATULATIONS!</h3>
+                        <p style="color: #666; font-size: 14px; margin-top: 0;">OFFICIAL FINISHER OF RCI RACING 2026</p>
+                        
+                        <div style="position: relative; display: inline-block; margin: 25px 0; width: 180px; height: 180px;">
+                            <img src="{runner['profile_url']}" style="
+                                width: 100%; 
+                                height: 100%; 
+                                border-radius: 50%; 
+                                border: 6px solid #D4AF37; 
+                                object-fit: cover;
+                                box-shadow: 0px 5px 15px rgba(0,0,0,0.2);
+                            ">
+                            
+                            <img src="{medal_uri}" style="
+                                position: absolute; 
+                                top: -15px; 
+                                right: -15px; 
+                                width: 60px; 
+                                height: 60px; 
+                                border-radius: 50%; 
+                                border: 3px solid #D4AF37; 
+                                box-shadow: 0px 2px 5px rgba(0,0,0,0.3);
+                                background-color: white; /* ใส่พื้นหลังขาว เผื่อรูปเหรียญเป็นแบบโปร่งแสง */
+                            ">
+                        </div>
+                        
+                        <h2 style="margin: 10px 0; color: #2C3E50; font-size: 28px;">{runner['name']}</h2>
+                        <p style="font-size: 20px; color: #D4AF37; font-weight: bold; margin: 0;">BIB: {runner['bib_number']}</p>
+                        
+                        <div style="border-top: 2px dashed #eee; margin: 25px 0; padding-top: 20px;">
+                            <p style="font-size: 12px; color: #999; margin-bottom: 5px; text-transform: uppercase;">Completed At</p>
+                            <p style="font-size: 22px; font-weight: bold; color: #2C3E50;">{finish_time.strftime('%H:%M:%S')} น.</p>
+                        </div>
+                        
+                        <div style="background: #FFF9E6; padding: 12px; border-radius: 12px; border: 1px solid #FFE799;">
+                            <p style="font-size: 12px; color: #856404; margin: 0;">
+                                🏅 นำหน้านี้แสดงต่อเจ้าหน้าที่เพื่อรับรางวัล
+                            </p>
+                        </div>
                     </div>
-                    
-                    <h2 style="margin: 10px 0; color: #2C3E50; font-size: 24px;">{runner['name']}</h2>
-                    <p style="font-size: 18px; color: #D4AF37; font-weight: bold; margin: 0;">BIB: {runner['bib_number']}</p>
-                    
-                    <div style="border-top: 2px dashed #eee; margin: 20px 0; padding-top: 15px;">
-                        <p style="font-size: 11px; color: #999; margin-bottom: 5px;">COMPLETED AT</p>
-                        <p style="font-size: 20px; font-weight: bold; color: #2C3E50;">{finish_time} น.</p>
-                    </div>
-                </div>
-            </div>
-            """
-            
-            # ใช้ components.html แทน st.markdown
-            # กำหนดความสูง (height) ให้พอดีกับการ์ด
-            components.html(html_content, height=550, scrolling=False)
-            
+                """, unsafe_allow_html=True)
+                
+            else:
+                # กรณีสแกนยังไม่ครบ
+                st.warning("⚠️ คุณยังวิ่งไม่ถึงเส้นชัย!")
+                st.info(f"สะสมจุดเช็คพอยท์ได้: {len(checked)} / {len(CHECKPOINT_LIST)} จุด")
+                
+                # แสดง Progress Bar แบบง่าย
+                progress = len(checked) / len(CHECKPOINT_LIST)
+                st.progress(progress)
+                
+                for cp in CHECKPOINT_LIST:
+                    status = "✅" if cp in checked else "⚪"
+                    st.write(f"{status} {cp}")
         else:
-            st.warning("⚠️ ยังวิ่งไม่ครบทุกจุด!")
-            st.progress(len(checked) / len(CHECKPOINT_LIST))
-    
+            st.error("ไม่พบข้อมูลนักวิ่งในระบบ")
+            
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
+
     st.divider()
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
