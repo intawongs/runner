@@ -240,22 +240,89 @@ elif st.session_state.page == "LEADERBOARD":
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
 # --- PAGE: REWARD ---
+# --- PAGE: REWARD (ตกแต่งแนว Congratulation) ---
 elif st.session_state.page == "REWARD":
-    st.subheader("🎁 สรุปผลการวิ่ง")
-    res = supabase.table("run_logs").select("*").eq("bib_number", st.session_state.my_bib).execute()
-    if res.data:
-        logs = pd.DataFrame(res.data)
-        checked = logs['checkpoint_name'].tolist()
-        st.progress(len(checked)/len(CHECKPOINT_LIST))
-        
-        cols = st.columns(len(CHECKPOINT_LIST))
-        for idx, cp in enumerate(CHECKPOINT_LIST):
-            cols[idx].write(f"{'✅' if cp in checked else '⚪'}\n{cp}")
-        
-        if "Finish" in checked:
-            st.success("🎉 ยินดีด้วย! คุณวิ่งครบระยะทางแล้ว")
-            st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=REWARD_{st.session_state.my_bib}", caption="แสดง QR นี้เพื่อรับรางวัล")
-    else:
-        st.warning("ยังไม่พบข้อมูลการวิ่ง")
+    st.markdown("<h2 style='text-align: center;'>🎊 FINISHER CELEBRATION 🎊</h2>", unsafe_allow_html=True)
     
+    # ดึงข้อมูลนักวิ่งและ Log ทั้งหมด
+    res_runner = supabase.table("runners").select("*").eq("bib_number", st.session_state.my_bib).single().execute()
+    res_logs = supabase.table("run_logs").select("*").eq("bib_number", st.session_state.my_bib).execute()
+    
+    if res_runner.data and res_logs.data:
+        runner = res_runner.data
+        logs = pd.DataFrame(res_logs.data)
+        checked = logs['checkpoint_name'].tolist()
+        
+        # ตรวจสอบว่าวิ่งครบจริงไหม
+        is_finished = "Finish" in checked
+        
+        if is_finished:
+            # คำนวณเวลาที่ใช้ (Optional)
+            finish_time = pd.to_datetime(logs[logs['checkpoint_name']=="Finish"]['scanned_at'].values[0]).astimezone(tz)
+            
+            # --- ส่วนการตกแต่งรูปภาพแนว Congratulation ---
+            st.markdown(f"""
+                <div style="
+                    background: white;
+                    padding: 30px;
+                    border-radius: 20px;
+                    border: 5px solid #D4AF37;
+                    text-align: center;
+                    box-shadow: 0px 10px 30px rgba(0,0,0,0.1);
+                    max-width: 500px;
+                    margin: auto;
+                    background-image: linear-gradient(rgba(255,255,255,0.9), rgba(255,255,255,0.9)), url('https://www.transparenttextures.com/patterns/white-diamond.png');
+                ">
+                    <h3 style="color: #D4AF37; margin-bottom: 5px;">CONGRATULATIONS!</h3>
+                    <p style="color: #555; font-size: 14px;">FINISHER OF RCI RACING 2026</p>
+                    
+                    <div style="position: relative; display: inline-block; margin: 20px 0;">
+                        <img src="{runner['profile_url']}" style="
+                            width: 200px; 
+                            height: 200px; 
+                            border-radius: 50%; 
+                            border: 8px solid #D4AF37; 
+                            object-fit: cover;
+                            box-shadow: 0px 5px 15px rgba(0,0,0,0.3);
+                        ">
+                        <div style="
+                            position: absolute; 
+                            bottom: 10px; 
+                            right: 10px; 
+                            background: #D4AF37; 
+                            color: white; 
+                            padding: 5px 15px; 
+                            border-radius: 20px; 
+                            font-weight: bold;
+                            font-size: 12px;
+                        ">🏆 FINISHER</div>
+                    </div>
+                    
+                    <h2 style="margin: 10px 0; color: #333;">{runner['name']}</h2>
+                    <p style="font-size: 18px; color: #D4AF37; font-weight: bold; margin-top: 0;">BIB: {runner['bib_number']}</p>
+                    
+                    <div style="border-top: 2px dashed #ddd; margin: 20px 0; padding-top: 15px;">
+                        <p style="font-size: 12px; color: #888; margin-bottom: 5px;">COMPLETED AT</p>
+                        <p style="font-size: 16px; font-weight: bold; color: #333;">{finish_time.strftime('%H:%M:%S')} น.</p>
+                    </div>
+                    
+                    <div style="background: #f9f9f9; padding: 10px; border-radius: 10px;">
+                        <p style="font-size: 11px; color: #999; margin: 0;">แสดงหน้านี้แก่เจ้าหน้าที่เพื่อรับเหรียญรางวัล</p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.balloons() # ฉลองความสำเร็จ
+            
+        else:
+            # ถ้ายังวิ่งไม่ครบ ให้โชว์ Progress ปกติ
+            st.warning("คุณยังวิ่งไม่ครบทุกจุด! กรุณาสแกนให้ครบเพื่อรับการ์ด Finisher")
+            st.progress(len(checked)/len(CHECKPOINT_LIST))
+            for cp in CHECKPOINT_LIST:
+                st.write(f"{'✅' if cp in checked else '⚪'} {cp}")
+
+    else:
+        st.error("ไม่พบข้อมูลนักวิ่ง")
+
+    st.write("")
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
