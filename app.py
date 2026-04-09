@@ -197,27 +197,73 @@ elif st.session_state.page == "SCAN":
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), key="sc_home")
 
 # --- LEADERBOARD ---
+# --- PAGE: LEADERBOARD (Optimized Grid) ---
 elif st.session_state.page == "LEADERBOARD":
-    st.markdown("<h2 style='text-align: center; color: #2E86C1;'>🏎️ RCI RACING LANES</h2>", unsafe_allow_html=True)
-    st_autorefresh(interval=5000, key="auto_lb")
-    lanes = st.columns(len(CHECKPOINT_LIST))
+    st.markdown("<h2 style='text-align: center; color: #2E86C1;'>🏎️ RCI RACING REAL-TIME</h2>", unsafe_allow_html=True)
+    st_autorefresh(interval=5000, key="auto_lb_final")
+    
+    # 1. ดึงข้อมูลล่าสุด
     res = supabase.table("run_logs").select("*, runners(*)").order("scanned_at", desc=True).execute()
     latest_df = pd.DataFrame()
     if res.data:
         df = pd.DataFrame(res.data)
+        # เก็บเฉพาะจุดล่าสุดของแต่ละ BIB
         latest_df = df.sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index()
+
+    # 2. สร้าง Column สำหรับ 5 เลน
+    lanes = st.columns(len(CHECKPOINT_LIST))
 
     for idx, cp in enumerate(CHECKPOINT_LIST):
         with lanes[idx]:
-            st.markdown(f"<div class='cp-header'>{cp}</div><div class='lane-container'>", unsafe_allow_html=True)
+            # ส่วนหัวของเลน
+            st.markdown(f"<div class='cp-header'>{cp}</div>", unsafe_allow_html=True)
+            
+            # พื้นที่เลนวิ่งแบบ Grid
+            # ใช้ CSS แบบ inline เพื่อบังคับให้รูปอยู่ด้านบนเสมอ
+            lane_html = """
+            <div style="
+                background: rgba(255, 255, 255, 0.4);
+                border-radius: 15px;
+                border: 1px solid rgba(255, 255, 255, 0.6);
+                backdrop-filter: blur(10px);
+                padding: 15px 5px;
+                min-height: 550px;
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                align-content: flex-start; /* บังคับให้เริ่มเรียงจากด้านบน */
+                gap: 10px;
+            ">
+            """
+            
             if not latest_df.empty:
                 runners_in_cp = latest_df[latest_df['checkpoint_name'] == cp]
                 for _, r in runners_in_cp.iterrows():
                     pic = r['runners']['profile_url'] if r['runners'] and r['runners']['profile_url'] else ""
+                    # ตัดชื่อให้สั้นลงเพื่อความสวยงาม
                     nick = (r['runners']['name'] if r['runners'] else r['bib_number']).split(" ")[0]
-                    st.markdown(f"<div class='runner-card'><img src='{pic}' style='width:45px; height:45px; border-radius:50%; object-fit:cover;'><div class='runner-name'>{nick}</div></div>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-    st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), key="lb_home")
+                    
+                    lane_html += f"""
+                    <div style="text-align: center; width: 60px;">
+                        <div style="
+                            width: 55px; height: 55px; border-radius: 50%; 
+                            border: 3px solid gold; overflow: hidden; background: white;
+                            box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin: 0 auto;
+                        ">
+                            <img src='{pic}' style='width: 100%; height: 100%; object-fit: cover;'>
+                        </div>
+                        <div style='font-size: 10px; font-weight: bold; color: #2E86C1; margin-top: 5px; 
+                             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>
+                            {nick}
+                        </div>
+                    </div>
+                    """
+            
+            lane_html += "</div>"
+            st.markdown(lane_html, unsafe_allow_html=True)
+
+    st.write("---")
+    st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True, key="lb_home_btn_final")
 
 # --- REWARD ---
 elif st.session_state.page == "REWARD":
