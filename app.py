@@ -240,11 +240,10 @@ elif st.session_state.page == "LEADERBOARD":
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
 # --- PAGE: REWARD ---
-# --- PAGE: REWARD ---
+# --- PAGE: REWARD (Safe HTML Version) ---
 elif st.session_state.page == "REWARD":
     st.markdown("<h2 style='text-align: center;'>🎊 FINISHER CELEBRATION 🎊</h2>", unsafe_allow_html=True)
     
-    # ดึงข้อมูลมาเตรียมไว้
     res_runner = supabase.table("runners").select("*").eq("bib_number", st.session_state.my_bib).single().execute()
     res_logs = supabase.table("run_logs").select("*").eq("bib_number", st.session_state.my_bib).execute()
     
@@ -256,36 +255,43 @@ elif st.session_state.page == "REWARD":
         if "Finish" in checked:
             st.balloons()
             finish_row = logs[logs['checkpoint_name'] == "Finish"].iloc[0]
-            finish_time = pd.to_datetime(finish_row['scanned_at']).astimezone(tz)
+            finish_time = pd.to_datetime(finish_row['scanned_at']).astimezone(tz).strftime('%H:%M:%S')
 
-            # ส่วนนี้คือจุดที่แสดงผลรูปภาพและการ์ด
-            # ห้ามใช้ st.write() หุ้มเด็ดขาด ให้ใช้ st.markdown() เพียวๆ แบบนี้เลย
-            
-            card_html = f"""
+            # ใช้ Template แบบไม่มี f-string เพื่อป้องกันปัญหาปีกกา CSS
+            html_template = """
             <div style="background: white; padding: 30px; border-radius: 20px; border: 5px solid #D4AF37; text-align: center; box-shadow: 0px 10px 30px rgba(0,0,0,0.1); max-width: 450px; margin: 20px auto;">
                 <h3 style="color: #D4AF37; margin-bottom: 5px;">CONGRATULATIONS!</h3>
                 <p style="color: #666; font-size: 14px; margin-top: 0;">OFFICIAL FINISHER OF RCI RACING 2026</p>
                 
                 <div style="position: relative; display: inline-block; margin: 25px 0;">
-                    <img src="{runner['profile_url']}" style="width: 180px; height: 180px; border-radius: 50%; border: 6px solid #D4AF37; object-fit: cover;">
+                    <img src="URL_HOLDER" style="width: 180px; height: 180px; border-radius: 50%; border: 6px solid #D4AF37; object-fit: cover;">
                     <div style="position: absolute; bottom: 5px; right: 5px; background: #D4AF37; color: white; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 12px;">🏆 FINISHER</div>
                 </div>
                 
-                <h2 style="margin: 10px 0; color: #2C3E50;">{runner['name']}</h2>
-                <p style="font-size: 20px; color: #D4AF37; font-weight: bold; margin: 0;">BIB: {runner['bib_number']}</p>
+                <h2 style="margin: 10px 0; color: #2C3E50;">NAME_HOLDER</h2>
+                <p style="font-size: 20px; color: #D4AF37; font-weight: bold; margin: 0;">BIB: BIB_HOLDER</p>
                 
                 <div style="border-top: 2px dashed #eee; margin: 25px 0; padding-top: 20px;">
                     <p style="font-size: 12px; color: #999; margin-bottom: 5px;">COMPLETED AT</p>
-                    <p style="font-size: 22px; font-weight: bold; color: #2C3E50;">{finish_time.strftime('%H:%M:%S')} น.</p>
+                    <p style="font-size: 22px; font-weight: bold; color: #2C3E50;">TIME_HOLDER น.</p>
                 </div>
             </div>
             """
             
-            # บรรทัดนี้คือพระเอกครับ ห้ามลืม unsafe_allow_html=True
-            st.markdown(card_html, unsafe_allow_html=True)
+            # ทำการแทนที่ค่าตัวแปรลงใน Template
+            final_html = html_template.replace("URL_HOLDER", runner['profile_url']) \
+                                      .replace("NAME_HOLDER", runner['name']) \
+                                      .replace("BIB_HOLDER", runner['bib_number']) \
+                                      .replace("TIME_HOLDER", finish_time)
+
+            # สั่ง Render HTML
+            st.markdown(final_html, unsafe_allow_html=True)
             
         else:
             st.warning("⚠️ ยังวิ่งไม่ครบทุกจุด!")
             st.progress(len(checked) / len(CHECKPOINT_LIST))
+            for cp in CHECKPOINT_LIST:
+                st.write(f"{'✅' if cp in checked else '⚪'} {cp}")
     
+    st.divider()
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
