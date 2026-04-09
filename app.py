@@ -272,7 +272,7 @@ elif st.session_state.page == "REWARD":
                     return base64.b64encode(data).decode()
 
                 # 🔥 2. กำหนด Path ของไฟล์ badge.jpg (สมมติว่าอยู่โฟลเดอร์เดียวกับ app.py) 🔥
-                img_path = 'badge.JPG' 
+                img_path = 'badge.jpg' 
                 
                 # ตรวจสอบว่ามีไฟล์จริงไหม เพื่อป้องกัน Error
                 if os.path.exists(img_path):
