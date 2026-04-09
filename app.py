@@ -243,8 +243,9 @@ elif st.session_state.page == "LEADERBOARD":
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
 # --- PAGE: REWARD ---
-# --- PAGE: REWARD (Full Version - Clean Code) ---
+# --- PAGE: REWARD (Final Fix Version) ---
 elif st.session_state.page == "REWARD":
+    import streamlit.components.v1 as components # ต้องมีตัวนี้เพื่อรัน HTML แยกส่วน
     st.markdown("<h2 style='text-align: center;'>🎊 FINISHER CELEBRATION 🎊</h2>", unsafe_allow_html=True)
     
     try:
@@ -258,59 +259,59 @@ elif st.session_state.page == "REWARD":
             
             if "Finish" in checked:
                 st.balloons()
-                
-                # ดึงเวลาที่เข้าเส้นชัย
                 f_row = logs[logs['checkpoint_name'] == "Finish"].iloc[0]
                 f_time = pd.to_datetime(f_row['scanned_at']).astimezone(tz).strftime('%H:%M:%S')
                 
-                # จัดการรูปเหรียญรางวัล (Local File)
+                # เตรียมรูปเหรียญ Base64
                 medal_uri = ""
-                img_path = 'badge.jpg'
-                if os.path.exists(img_path):
-                    with open(img_path, 'rb') as f:
-                        m_base64 = base64.b64encode(f.read()).decode()
-                    medal_uri = f"data:image/jpeg;base64,{m_base64}"
-                else:
-                    st.error(f"❌ ไม่พบไฟล์ {img_path} ในโฟลเดอร์")
+                if os.path.exists('badge.jpg'):
+                    with open('badge.jpg', 'rb') as f:
+                        medal_uri = f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode()}"
 
-                # สร้างการ์ดแสดงความยินดี
-                card_html = f"""
-                <div style="background: white; padding: 30px; border-radius: 20px; border: 5px solid #D4AF37; text-align: center; box-shadow: 0px 10px 30px rgba(0,0,0,0.1); max-width: 420px; margin: 20px auto; font-family: sans-serif;">
-                    <h3 style="color: #D4AF37; margin-bottom: 5px; letter-spacing: 2px; font-weight: bold;">CONGRATULATIONS!</h3>
-                    <p style="color: #666; font-size: 13px; margin-top: 0;">OFFICIAL FINISHER OF RCI RACING 2026</p>
-                    
-                    <div style="position: relative; display: inline-block; margin: 25px 0; width: 180px; height: 180px;">
-                        <img src="{runner['profile_url']}" style="width: 100%; height: 100%; border-radius: 50%; border: 6px solid #D4AF37; object-fit: cover; box-shadow: 0px 5px 15px rgba(0,0,0,0.2);">
+                # ใช้ Template HTML เปล่าๆ แล้วแทนที่ค่า (เพื่อไม่ให้ f-string ตีกับ CSS)
+                html_card = """
+                <div style="font-family: sans-serif; display: flex; justify-content: center; padding: 10px;">
+                    <div style="background: white; padding: 30px; border-radius: 20px; border: 5px solid #D4AF37; text-align: center; box-shadow: 0px 10px 30px rgba(0,0,0,0.1); width: 320px;">
+                        <h3 style="color: #D4AF37; margin: 0; letter-spacing: 1px; font-size: 18px;">CONGRATULATIONS!</h3>
+                        <p style="color: #666; font-size: 11px; margin: 5px 0 20px 0;">OFFICIAL FINISHER OF RCI RACING 2026</p>
                         
-                        <img src="{medal_uri}" style="position: absolute; top: -10px; right: -10px; width: 75px; height: 75px; border-radius: 50%; border: 3px solid #D4AF37; box-shadow: 0px 4px 8px rgba(0,0,0,0.3); background-color: white;">
-                    </div>
-                    
-                    <h2 style="margin: 10px 0; color: #2C3E50; font-size: 28px;">{runner['name']}</h2>
-                    <p style="font-size: 20px; color: #D4AF37; font-weight: bold; margin: 0;">BIB: {runner['bib_number']}</p>
-                    
-                    <div style="border-top: 2px dashed #eee; margin: 25px 0; padding-top: 20px;">
-                        <p style="font-size: 11px; color: #999; margin-bottom: 5px; text-transform: uppercase;">Completed At</p>
-                        <p style="font-size: 24px; font-weight: bold; color: #2C3E50;">{f_time} น.</p>
-                    </div>
-                    
-                    <div style="background: #FFF9E6; padding: 12px; border-radius: 12px; border: 1px solid #FFE799;">
-                        <p style="font-size: 13px; color: #856404; margin: 0; font-weight: bold;">🏅 แสดงหน้านี้ต่อเจ้าหน้าที่เพื่อรับรางวัล</p>
+                        <div style="position: relative; display: inline-block; margin-bottom: 20px;">
+                            <img src="RUNNER_IMG" style="width: 160px; height: 160px; border-radius: 50%; border: 5px solid #D4AF37; object-fit: cover;">
+                            <img src="MEDAL_IMG" style="position: absolute; top: -10px; right: -10px; width: 70px; height: 70px; border-radius: 50%; border: 3px solid #D4AF37; background: white;">
+                        </div>
+                        
+                        <h2 style="margin: 5px 0; color: #2C3E50; font-size: 24px;">USER_NAME</h2>
+                        <p style="font-size: 18px; color: #D4AF37; font-weight: bold; margin: 0;">BIB: USER_BIB</p>
+                        
+                        <div style="border-top: 2px dashed #eee; margin: 20px 0; padding-top: 15px;">
+                            <p style="font-size: 10px; color: #999; margin-bottom: 3px;">COMPLETED AT</p>
+                            <p style="font-size: 20px; font-weight: bold; color: #2C3E50;">FINISH_TIME น.</p>
+                        </div>
+                        
+                        <div style="background: #FFF9E6; padding: 10px; border-radius: 10px; border: 1px solid #FFE799;">
+                            <p style="font-size: 12px; color: #856404; margin: 0; font-weight: bold;">🏅 แสดงหน้านี้เพื่อรับรางวัล</p>
+                        </div>
                     </div>
                 </div>
                 """
                 
-                st.markdown(card_html, unsafe_allow_html=True)
+                # แทนที่ตัวแปรลงใน Template
+                final_html = html_card.replace("RUNNER_IMG", runner['profile_url']) \
+                                      .replace("MEDAL_IMG", medal_uri) \
+                                      .replace("USER_NAME", runner['name']) \
+                                      .replace("USER_BIB", runner['bib_number']) \
+                                      .replace("FINISH_TIME", f_time)
+
+                # บังคับ Render ด้วย components.html
+                components.html(final_html, height=520, scrolling=False)
                 
             else:
-                st.warning("⚠️ คุณยังวิ่งไม่ถึงเส้นชัย! กรุณาสแกนจุด Finish ก่อนครับ")
-                st.info(f"สะสมจุดได้: {len(checked)} / {len(CHECKPOINT_LIST)}")
+                st.warning("⚠️ ยังสแกนไม่ครบทุกจุด!")
                 st.progress(len(checked) / len(CHECKPOINT_LIST))
-                
         else:
             st.error("ไม่พบข้อมูลนักวิ่ง")
             
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาด: {e}")
+        st.error(f"Error: {e}")
 
-    st.divider()
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
