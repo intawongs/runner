@@ -243,8 +243,7 @@ elif st.session_state.page == "LEADERBOARD":
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
 
 # --- PAGE: REWARD ---
-# --- PAGE: REWARD (Safe HTML Version) ---
-
+# --- PAGE: REWARD (Full Version - Clean Code) ---
 elif st.session_state.page == "REWARD":
     st.markdown("<h2 style='text-align: center;'>🎊 FINISHER CELEBRATION 🎊</h2>", unsafe_allow_html=True)
     
@@ -257,107 +256,61 @@ elif st.session_state.page == "REWARD":
             logs = pd.DataFrame(res_logs.data)
             checked = logs['checkpoint_name'].tolist()
             
-            # ตรวจสอบว่าสแกน Finish หรือยัง
             if "Finish" in checked:
-                st.balloons() # ยิงลูกโป่งฉลอง
+                st.balloons()
                 
-                # หาเวลาที่เข้าเส้นชัย
-                finish_row = logs[logs['checkpoint_name'] == "Finish"].iloc[0]
-                finish_time = pd.to_datetime(finish_row['scanned_at']).astimezone(tz)
+                # ดึงเวลาที่เข้าเส้นชัย
+                f_row = logs[logs['checkpoint_name'] == "Finish"].iloc[0]
+                f_time = pd.to_datetime(f_row['scanned_at']).astimezone(tz).strftime('%H:%M:%S')
                 
-                # 🔥 1. ฟังก์ชันแปลงรูปภาพท้องถิ่นเป็น Base64 String 🔥
-                def get_base64_of_bin_file(bin_file):
-                    with open(bin_file, 'rb') as f:
-                        data = f.read()
-                    return base64.b64encode(data).decode()
-
-                # 🔥 2. กำหนด Path ของไฟล์ badge.jpg (สมมติว่าอยู่โฟลเดอร์เดียวกับ app.py) 🔥
-                img_path = 'badge.jpg' 
-                
-                # ตรวจสอบว่ามีไฟล์จริงไหม เพื่อป้องกัน Error
+                # จัดการรูปเหรียญรางวัล (Local File)
+                medal_uri = ""
+                img_path = 'badge.jpg'
                 if os.path.exists(img_path):
-                    # 🔥 3. แปลงรูปเป็น Base64 String 🔥
-                    img_base64 = get_base64_of_bin_file(img_path)
-                    
-                    # 🔥 4. สร้าง Data URI สำหรับใช้ใน HTML 🔥
-                    medal_uri = f"data:image/jpeg;base64,{img_base64}"
+                    with open(img_path, 'rb') as f:
+                        m_base64 = base64.b64encode(f.read()).decode()
+                    medal_uri = f"data:image/jpeg;base64,{m_base64}"
                 else:
-                    # กรณีไม่มีไฟล์ ให้ใช้ URL สำรองหรือรูปว่างเปล่า
-                    st.error(f"❌ ไม่พบไฟล์ {img_path} ในโฟลเดอร์แอป!")
-                    medal_uri = "https://www.w3schools.com/howto/img_avatar.png" # รูปสำรอง
+                    st.error(f"❌ ไม่พบไฟล์ {img_path} ในโฟลเดอร์")
 
-                # --- ส่วนแสดงการ์ด Congratulation (HTML + CSS) ---
-                st.markdown(f"""
-                    <div style="
-                        background: white;
-                        padding: 30px;
-                        border-radius: 20px;
-                        border: 5px solid #D4AF37;
-                        text-align: center;
-                        box-shadow: 0px 10px 30px rgba(0,0,0,0.1);
-                        max-width: 450px;
-                        margin: 20px auto;
-                        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                    ">
-                        <h3 style="color: #D4AF37; margin-bottom: 5px; letter-spacing: 2px;">CONGRATULATIONS!</h3>
-                        <p style="color: #666; font-size: 14px; margin-top: 0;">OFFICIAL FINISHER OF RCI RACING 2026</p>
+                # สร้างการ์ดแสดงความยินดี
+                card_html = f"""
+                <div style="background: white; padding: 30px; border-radius: 20px; border: 5px solid #D4AF37; text-align: center; box-shadow: 0px 10px 30px rgba(0,0,0,0.1); max-width: 420px; margin: 20px auto; font-family: sans-serif;">
+                    <h3 style="color: #D4AF37; margin-bottom: 5px; letter-spacing: 2px; font-weight: bold;">CONGRATULATIONS!</h3>
+                    <p style="color: #666; font-size: 13px; margin-top: 0;">OFFICIAL FINISHER OF RCI RACING 2026</p>
+                    
+                    <div style="position: relative; display: inline-block; margin: 25px 0; width: 180px; height: 180px;">
+                        <img src="{runner['profile_url']}" style="width: 100%; height: 100%; border-radius: 50%; border: 6px solid #D4AF37; object-fit: cover; box-shadow: 0px 5px 15px rgba(0,0,0,0.2);">
                         
-                        <div style="position: relative; display: inline-block; margin: 25px 0; width: 180px; height: 180px;">
-                            <img src="{runner['profile_url']}" style="
-                                width: 100%; 
-                                height: 100%; 
-                                border-radius: 50%; 
-                                border: 6px solid #D4AF37; 
-                                object-fit: cover;
-                                box-shadow: 0px 5px 15px rgba(0,0,0,0.2);
-                            ">
-                            
-                            <img src="{medal_uri}" style="
-                                position: absolute; 
-                                top: -15px; 
-                                right: -15px; 
-                                width: 60px; 
-                                height: 60px; 
-                                border-radius: 50%; 
-                                border: 3px solid #D4AF37; 
-                                box-shadow: 0px 2px 5px rgba(0,0,0,0.3);
-                                background-color: white; /* ใส่พื้นหลังขาว เผื่อรูปเหรียญเป็นแบบโปร่งแสง */
-                            ">
-                        </div>
-                        
-                        <h2 style="margin: 10px 0; color: #2C3E50; font-size: 28px;">{runner['name']}</h2>
-                        <p style="font-size: 20px; color: #D4AF37; font-weight: bold; margin: 0;">BIB: {runner['bib_number']}</p>
-                        
-                        <div style="border-top: 2px dashed #eee; margin: 25px 0; padding-top: 20px;">
-                            <p style="font-size: 12px; color: #999; margin-bottom: 5px; text-transform: uppercase;">Completed At</p>
-                            <p style="font-size: 22px; font-weight: bold; color: #2C3E50;">{finish_time.strftime('%H:%M:%S')} น.</p>
-                        </div>
-                        
-                        <div style="background: #FFF9E6; padding: 12px; border-radius: 12px; border: 1px solid #FFE799;">
-                            <p style="font-size: 12px; color: #856404; margin: 0;">
-                                🏅 นำหน้านี้แสดงต่อเจ้าหน้าที่เพื่อรับรางวัล
-                            </p>
-                        </div>
+                        <img src="{medal_uri}" style="position: absolute; top: -10px; right: -10px; width: 75px; height: 75px; border-radius: 50%; border: 3px solid #D4AF37; box-shadow: 0px 4px 8px rgba(0,0,0,0.3); background-color: white;">
                     </div>
-                """, unsafe_allow_html=True)
+                    
+                    <h2 style="margin: 10px 0; color: #2C3E50; font-size: 28px;">{runner['name']}</h2>
+                    <p style="font-size: 20px; color: #D4AF37; font-weight: bold; margin: 0;">BIB: {runner['bib_number']}</p>
+                    
+                    <div style="border-top: 2px dashed #eee; margin: 25px 0; padding-top: 20px;">
+                        <p style="font-size: 11px; color: #999; margin-bottom: 5px; text-transform: uppercase;">Completed At</p>
+                        <p style="font-size: 24px; font-weight: bold; color: #2C3E50;">{f_time} น.</p>
+                    </div>
+                    
+                    <div style="background: #FFF9E6; padding: 12px; border-radius: 12px; border: 1px solid #FFE799;">
+                        <p style="font-size: 13px; color: #856404; margin: 0; font-weight: bold;">🏅 แสดงหน้านี้ต่อเจ้าหน้าที่เพื่อรับรางวัล</p>
+                    </div>
+                </div>
+                """
+                
+                st.markdown(card_html, unsafe_allow_html=True)
                 
             else:
-                # กรณีสแกนยังไม่ครบ
-                st.warning("⚠️ คุณยังวิ่งไม่ถึงเส้นชัย!")
-                st.info(f"สะสมจุดเช็คพอยท์ได้: {len(checked)} / {len(CHECKPOINT_LIST)} จุด")
+                st.warning("⚠️ คุณยังวิ่งไม่ถึงเส้นชัย! กรุณาสแกนจุด Finish ก่อนครับ")
+                st.info(f"สะสมจุดได้: {len(checked)} / {len(CHECKPOINT_LIST)}")
+                st.progress(len(checked) / len(CHECKPOINT_LIST))
                 
-                # แสดง Progress Bar แบบง่าย
-                progress = len(checked) / len(CHECKPOINT_LIST)
-                st.progress(progress)
-                
-                for cp in CHECKPOINT_LIST:
-                    status = "✅" if cp in checked else "⚪"
-                    st.write(f"{status} {cp}")
         else:
-            st.error("ไม่พบข้อมูลนักวิ่งในระบบ")
+            st.error("ไม่พบข้อมูลนักวิ่ง")
             
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
+        st.error(f"เกิดข้อผิดพลาด: {e}")
 
     st.divider()
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True)
