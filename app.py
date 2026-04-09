@@ -91,10 +91,20 @@ def haversine(lat1, lon1, lat2, lon2):
 def upload_photo(file_bytes, bib):
     path = f"profile_{bib}.jpg"
     bucket = "runner_photos"
-    try: supabase.storage.from_(bucket).remove([path])
-    except: pass
-    supabase.storage.from_(bucket).upload(path, file_bytes, {"content-type": "image/jpeg"})
-    return f"{st.secrets['SUPABASE_URL']}/storage/v1/object/public/{bucket}/{path}"
+    try:
+        # ปรับการเรียกใช้ upload โดยเพิ่ม upsert: true
+        supabase.storage.from_(bucket).upload(
+            path=path, 
+            file=file_bytes, 
+            file_options={
+                "content-type": "image/jpeg",
+                "upsert": "true"  # 🔥 สำคัญมาก: บังคับให้เขียนทับได้
+            }
+        )
+        return f"{st.secrets['SUPABASE_URL']}/storage/v1/object/public/{bucket}/{path}"
+    except Exception as e:
+        st.error(f"Storage Error: {e}")
+        return None
 
 # --- 4. NAVIGATION LOGIC ---
 
