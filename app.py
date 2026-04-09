@@ -242,16 +242,7 @@ elif st.session_state.page == "LEADERBOARD":
 
 # --- PAGE: REWARD ---
 # --- PAGE: REWARD (Safe HTML Version) ---
-import streamlit as st
-import pandas as pd
-# ... (import อื่นๆ เหมือนเดิม) ...
-import base64 # <--- 🔥 เพิ่ม import นี้ไว้บนสุดของไฟล์ครับ 🔥
-from PIL import Image
-import os
 
-# --- (โค้ดส่วน CONFIG, CONNECTION, HELPERS เหมือนเดิม) ---
-
-# --- PAGE: REWARD (ฉบับสมบูรณ์ ใช้ base64 ฝังรูป badge.jpg จากโฟลเดอร์) ---
 elif st.session_state.page == "REWARD":
     st.markdown("<h2 style='text-align: center;'>🎊 FINISHER CELEBRATION 🎊</h2>", unsafe_allow_html=True)
     
@@ -279,7 +270,7 @@ elif st.session_state.page == "REWARD":
                     return base64.b64encode(data).decode()
 
                 # 🔥 2. กำหนด Path ของไฟล์ badge.jpg (สมมติว่าอยู่โฟลเดอร์เดียวกับ app.py) 🔥
-                img_path = 'badge.jpg' 
+                img_path = 'badge.JPG' 
                 
                 # ตรวจสอบว่ามีไฟล์จริงไหม เพื่อป้องกัน Error
                 if os.path.exists(img_path):
