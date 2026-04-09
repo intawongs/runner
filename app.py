@@ -277,7 +277,7 @@ elif st.session_state.page == "REWARD":
                         
                         <div style="position: relative; display: inline-block; margin-bottom: 20px;">
                             <img src="RUNNER_IMG" style="width: 160px; height: 160px; border-radius: 50%; border: 5px solid #D4AF37; object-fit: cover;">
-                            <img src="MEDAL_IMG" style="position: absolute; top: -10px; right: -10px; width: 70px; height: 70px; border-radius: 50%; border: 3px solid #D4AF37; background: white;">
+                            <img src="MEDAL_IMG" style="position: absolute; top: -10px; right: -10px; width: 90px; height: 90px; border-radius: 50%; border: 3px solid #D4AF37; background: white;">
                         </div>
                         
                         <h2 style="margin: 5px 0; color: #2C3E50; font-size: 24px;">USER_NAME</h2>
