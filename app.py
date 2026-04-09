@@ -9,6 +9,8 @@ import pytz
 from datetime import datetime
 import time
 import streamlit.components.v1 as components # เพิ่มบรรทัดนี้ไว้บนสุดของไฟล์ด้วยครับ
+import os      # <--- 🔥 เพิ่มบรรทัดนี้เพื่อแก้ Error 'os' is not defined
+import base64  # <--- 🔥 เพิ่มบรรทัดนี้ด้วย เพราะต้องใช้แปลงรูป badge.jpg
 
 # --- 0. CONFIG & STYLES ---
 CP_COORDINATES = {
