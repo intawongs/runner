@@ -256,36 +256,90 @@ elif st.session_state.page == "LEADERBOARD":
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True, key="lb_home_v3")
 
 # --- REWARD ---
+# --- PAGE: REWARD (ฉบับคำนวณลำดับที่เข้าเส้นชัย) ---
 elif st.session_state.page == "REWARD":
     st.markdown("<h2 style='text-align: center;'>🎊 FINISHER 🎊</h2>", unsafe_allow_html=True)
+    
     try:
-        res_r = supabase.table("runners").select("*").eq("bib_number", st.session_state.my_bib).single().execute()
-        res_l = supabase.table("run_logs").select("*").eq("bib_number", st.session_state.my_bib).execute()
-        if res_r.data and "Finish" in [l['checkpoint_name'] for l in res_l.data]:
-            st.balloons()
-            start_t = pd.to_datetime(next(l for l in res_l.data if l['checkpoint_name']=="Start")['scanned_at'])
-            end_t = pd.to_datetime(next(l for l in res_l.data if l['checkpoint_name']=="Finish")['scanned_at'])
-            dur = int((end_t - start_t).total_seconds() / 60)
-            f_time = end_t.astimezone(tz).strftime('%H:%M:%S')
-            m_uri = f"data:image/jpeg;base64,{get_base64_bin('badge.jpg')}" if os.path.exists('badge.jpg') else ""
-            h_card = f"""
-            <div style="font-family: sans-serif; display: flex; justify-content: center;">
-                <div style="background: white; padding: 25px; border-radius: 20px; border: 6px solid #D4AF37; text-align: center; width: 320px;">
-                    <h3 style="color: #D4AF37; margin: 0;">CONGRATULATIONS!</h3>
-                    <div style="position: relative; display: inline-block; margin: 20px 0;">
-                        <img src="{res_r.data['profile_url']}" style="width: 160px; height: 160px; border-radius: 50%; border: 6px solid #D4AF37; object-fit: cover;">
-                        <img src="{m_uri}" style="position: absolute; top: -15px; right: -15px; width: 85px; height: 85px; border-radius: 50%; border: 3px solid #D4AF37; background: white;">
-                    </div>
-                    <h2 style="margin: 5px 0; color: #2C3E50;">{res_r.data['name']}</h2>
-                    <p style="color: #D4AF37; font-weight: bold;">BIB: {res_r.data['bib_number']}</p>
-                    <div style="display: flex; justify-content: space-around; border-top: 1px dashed #eee; margin-top: 15px; padding-top: 10px;">
-                        <div><p style="font-size: 10px; color: #999;">TIME</p><p style="font-size: 18px; font-weight: bold;">{dur} Min</p></div>
-                        <div><p style="font-size: 10px; color: #999;">FINISHED</p><p style="font-size: 18px; font-weight: bold;">{f_time}</p></div>
+        # 1. ดึงข้อมูลนักวิ่งปัจจุบัน
+        res_runner = supabase.table("runners").select("*").eq("bib_number", st.session_state.my_bib).single().execute()
+        # 2. ดึง Log ทั้งหมดเพื่อมาเรียงลำดับหา Rank
+        res_all_finish = supabase.table("run_logs").select("bib_number, scanned_at").eq("checkpoint_name", "Finish").order("scanned_at", desc=False).execute()
+        # 3. ดึง Log ของคนปัจจุบันเพื่อดูเวลา Start/Finish
+        res_my_logs = supabase.table("run_logs").select("*").eq("bib_number", st.session_state.my_bib).execute()
+        
+        if res_runner.data and res_my_logs.data:
+            runner = res_runner.data
+            my_logs = pd.DataFrame(res_my_logs.data)
+            my_checkpoints = my_logs['checkpoint_name'].tolist()
+            
+            if "Finish" in my_checkpoints and "Start" in my_checkpoints:
+                # --- คำนวณลำดับที่ (Rank) ---
+                all_finish_df = pd.DataFrame(res_all_finish.data)
+                # ลำดับคือตำแหน่งใน List ที่เรียงตามเวลาเข้าเส้นชัย (Index + 1)
+                rank = all_finish_df[all_finish_df['bib_number'] == st.session_state.my_bib].index[0] + 1
+                
+                # --- เช็คสิทธิ์รับเหรียญ ---
+                has_medal = rank <= 100
+                medal_status = "ได้รับเหรียญรางวัล! 🏅" if has_medal else "เสียใจด้วย คุณไม่ติด 100 คนแรก"
+                status_color = "#856404" if has_medal else "#721c24"
+                status_bg = "#FFF9E6" if has_medal else "#f8d7da"
+                
+                # --- คำนวณเวลาวิ่ง ---
+                start_t = pd.to_datetime(my_logs[my_logs['checkpoint_name']=="Start"].iloc[0]['scanned_at'])
+                finish_t = pd.to_datetime(my_logs[my_logs['checkpoint_name']=="Finish"].iloc[0]['scanned_at'])
+                duration = finish_t - start_t
+                total_min = int(duration.total_seconds() / 60)
+                f_time_str = finish_t.astimezone(tz).strftime('%H:%M:%S')
+
+                # รูปเหรียญรางวัล
+                medal_uri = ""
+                if os.path.exists('badge.jpg'):
+                    medal_uri = f"data:image/jpeg;base64,{get_base64_bin('badge.jpg')}"
+
+                # --- Render HTML Card ---
+                html_card = f"""
+                <div style="font-family: sans-serif; display: flex; justify-content: center; padding: 10px;">
+                    <div style="background: white; padding: 25px; border-radius: 20px; border: 6px solid #D4AF37; text-align: center; box-shadow: 0px 10px 30px rgba(0,0,0,0.1); width: 330px;">
+                        <div style="font-size: 14px; font-weight: bold; color: #D4AF37; margin-bottom: 10px;">
+                            RANK #{rank}
+                        </div>
+                        
+                        <div style="position: relative; display: inline-block; margin-bottom: 20px;">
+                            <img src="{runner['profile_url']}" style="width: 150px; height: 150px; border-radius: 50%; border: 5px solid #D4AF37; object-fit: cover;">
+                            {"<img src='"+medal_uri+"' style='position: absolute; top: -10px; right: -10px; width: 80px; height: 80px; border-radius: 50%; border: 3px solid #D4AF37; background: white;'>" if has_medal else ""}
+                        </div>
+                        
+                        <h2 style="margin: 0; color: #2C3E50; font-size: 24px;">{runner['name']}</h2>
+                        <p style="font-size: 16px; color: #D4AF37; font-weight: bold; margin: 5px 0;">BIB: {runner['bib_number']}</p>
+                        
+                        <div style="display: flex; justify-content: space-around; border-top: 2px dashed #eee; margin: 20px 0; padding-top: 15px;">
+                            <div>
+                                <p style="font-size: 10px; color: #999; margin: 0;">TIME</p>
+                                <p style="font-size: 18px; font-weight: bold; color: #2C3E50;">{total_min} Min</p>
+                            </div>
+                            <div>
+                                <p style="font-size: 10px; color: #999; margin: 0;">FINISH</p>
+                                <p style="font-size: 18px; font-weight: bold; color: #2C3E50;">{f_time_str}</p>
+                            </div>
+                        </div>
+                        
+                        <div style="background: {status_bg}; padding: 12px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.1);">
+                            <p style="font-size: 13px; color: {status_color}; margin: 0; font-weight: bold;">{medal_status}</p>
+                        </div>
                     </div>
                 </div>
-            </div>
-            """
-            components.html(h_card, height=560)
-        else: st.warning("ยังสแกนไม่ครบจุดครับ")
-    except Exception as e: st.error(f"Error: {e}")
-    st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), key="rw_home")
+                """
+                components.html(html_card, height=580)
+                
+                if has_medal:
+                    st.balloons()
+            else:
+                st.warning("⚠️ คุณยังสแกนไม่ครบจุด (ต้องสแกน Start และ Finish เป็นอย่างน้อย)")
+        else:
+            st.error("ไม่พบข้อมูลนักวิ่งในระบบ")
+            
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+    st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), use_container_width=True, key="rw_home_final")
