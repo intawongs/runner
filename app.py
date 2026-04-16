@@ -851,7 +851,7 @@ elif st.session_state.page == "REWARD":
                 </div>
                 <h2 style="margin:0; color: #333;">{user['name']}</h2>
                 <div style="margin: 15px 0; padding: 10px; background: #f0f4f7; border-radius: 10px;">
-                    <small style="color: #666;">เวลาการแข่งขัน (นับจาก 05:00)</small><br>
+                    <small style="color: #666;">เวลาการแข่งขัน</small><br>
                     <b style="font-size: 20px; color: #2E86C1;">{display_time}</b>
                 </div>
                 <div style="border-top: 1px dashed #ccc; padding-top: 15px;">
