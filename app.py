@@ -349,6 +349,253 @@
 
 
 
+# import streamlit as st
+# import pandas as pd
+# from supabase import create_client, Client
+# from streamlit_qrcode_scanner import qrcode_scanner
+# from streamlit_autorefresh import st_autorefresh
+# import pytz
+# from datetime import datetime
+# import time
+# import streamlit.components.v1 as components
+# import os
+# import base64
+
+# # --- 0. CONFIG & STYLES ---
+# FULL_CP_LIST = ["Start", "Checkpoint 1", "Checkpoint 2", "Checkpoint 3", "Finish"]
+# ADMIN_CODE = "3571138"
+# tz = pytz.timezone('Asia/Bangkok')
+
+# st.set_page_config(page_title="RCI RACING 2026", layout="wide", initial_sidebar_state="collapsed")
+
+# # CSS: ปุ่มสมมาตร, จัดวางกึ่งกลาง, UI เลนแบบใส
+# st.markdown("""
+#     <style>
+#     .main { background-image: linear-gradient(120deg, #fdfbfb 0%, #ebedee 100%); }
+#     .stButton > button {
+#         display: block; margin: 0 auto; width: 100%; max-width: 400px;
+#         height: 3.8em; border-radius: 12px; font-weight: bold; font-size: 16px;
+#         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+#     }
+#     .lane-container {
+#         background: rgba(255, 255, 255, 0.4); border-radius: 15px; border: 1px solid rgba(255, 255, 255, 0.6);
+#         backdrop-filter: blur(10px); padding: 10px; min-height: 550px;
+#         display: flex; flex-wrap: wrap; justify-content: center; align-content: flex-start; gap: 8px;
+#     }
+#     .cp-header { 
+#         background: rgba(46, 134, 193, 0.95); color: white; border-radius: 10px; 
+#         text-align: center; padding: 12px; font-size: 14px; font-weight: bold; margin-bottom: 10px; width: 100%;
+#     }
+#     .center-text { text-align: center; }
+#     </style>
+# """, unsafe_allow_html=True)
+
+# # --- 1. CONNECTION ---
+# def init_connection():
+#     try: return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+#     except Exception as e: st.error(f"❌ Connection Error: {e}"); st.stop()
+
+# supabase = init_connection()
+
+# # --- 2. HELPERS ---
+# if "my_bib" not in st.session_state: st.session_state.my_bib = st.query_params.get("bib", "")
+# if "page" not in st.session_state: st.session_state.page = "HOME"
+
+# def change_page(t): 
+#     st.session_state.page = t
+#     st.rerun()
+
+# def get_base64_bin(bin_file):
+#     if os.path.exists(bin_file):
+#         with open(bin_file, 'rb') as f: return base64.b64encode(f.read()).decode()
+#     return ""
+
+# def upload_photo(file_bytes, bib):
+#     path = f"profile_{bib}.jpg"; bucket = "runner_photos"
+#     try:
+#         supabase.storage.from_(bucket).upload(path=path, file=file_bytes, file_options={"content-type": "image/jpeg", "upsert": "true"})
+#         return f"{st.secrets['SUPABASE_URL']}/storage/v1/object/public/{bucket}/{path}"
+#     except: return f"{st.secrets['SUPABASE_URL']}/storage/v1/object/public/{bucket}/{path}"
+
+# # --- 3. PAGE ROUTING ---
+
+# # --- HOME PAGE ---
+# if st.session_state.page == "HOME":
+#     st.markdown("<div class='center-text'><h1>🏃‍♂️ RCI AI RACING 2026</h1><p>Smart Factory Walk Rally</p></div>", unsafe_allow_html=True)
+#     st.write("---")
+#     col = st.columns([1, 2, 1])[1]
+#     with col:
+#         if not st.session_state.my_bib:
+#             if st.button("📝 ลงทะเบียนใหม่", type="primary", key="home_btn_reg"): change_page("REGISTER")
+#             st.write("")
+#             input_val = st.text_input("ระบุเลข BIB หรือ รหัส Admin", placeholder="RCI-XXX", key="home_input_bib").strip()
+#             if st.button("เข้าสู่ระบบ", key="home_btn_login"):
+#                 if input_val == ADMIN_CODE: change_page("ADMIN_PANEL")
+#                 elif input_val:
+#                     res = supabase.table("runners").select("bib_number").eq("bib_number", input_val.upper()).execute()
+#                     if res.data: 
+#                         st.session_state.my_bib = input_val.upper()
+#                         st.query_params["bib"] = st.session_state.my_bib
+#                         st.rerun()
+#                     else: st.error("ไม่พบหมายเลข BIB")
+#         else:
+#             st.success(f"ล็อกอินเป็น BIB: **{st.session_state.my_bib}**")
+#             if st.button("🏁 สแกนเช็คพอยท์", type="primary", key="home_btn_scan"): change_page("SCAN")
+#             st.write("")
+#             if st.button("🏆 กระดานคะแนน (Leaderboard)", key="home_btn_lb"): change_page("LEADERBOARD")
+#             st.write("")
+#             if st.button("🎁 รับรางวัล / เช็คลำดับ", key="home_btn_rw"): change_page("REWARD")
+#             st.write("---")
+#             if st.button("🚪 ออกจากระบบ", key="home_btn_logout"): 
+#                 st.session_state.my_bib = ""
+#                 st.query_params.clear()
+#                 st.rerun()
+
+# # --- REGISTER PAGE ---
+# elif st.session_state.page == "REGISTER":
+#     st.markdown("<h2 class='center-text'>📝 ลงทะเบียนนักวิ่ง</h2>", unsafe_allow_html=True)
+#     if "reg_step" not in st.session_state: st.session_state.reg_step = "FORM"
+#     col = st.columns([1, 2, 1])[1]
+#     with col:
+#         if st.session_state.reg_step == "FORM":
+#             with st.form("reg_form_v5"):
+#                 name = st.text_input("ชื่อ-นามสกุล")
+#                 dept = st.selectbox("แผนก", ["Production", "R&D", "QA", "Logistics", "Office", "Maintenance", "Others"])
+#                 rtype = st.radio("ประเภทกิจกรรม", ["Running", "Walking"], horizontal=True)
+#                 if st.form_submit_button("ถัดไป: ถ่ายรูป"):
+#                     if name:
+#                         res = supabase.table("runners").select("bib_number").order("bib_number", desc=True).limit(1).execute()
+#                         last_num = int(res.data[0]['bib_number'].split("-")[1]) if res.data else 0
+#                         st.session_state.temp_user = {"bib": f"RCI-{last_num+1:03d}", "name": name, "dept": dept, "type": rtype}
+#                         st.session_state.reg_step = "PHOTO"; st.rerun()
+#             if st.button("🏠 กลับหน้าหลัก", key="reg_btn_home"): change_page("HOME")
+#         elif st.session_state.reg_step == "PHOTO":
+#             img = st.camera_input("ถ่ายรูปโปรไฟล์")
+#             if img:
+#                 with st.spinner("บันทึกข้อมูล..."):
+#                     url = upload_photo(img.getvalue(), st.session_state.temp_user['bib'])
+#                     supabase.table("runners").insert({"bib_number": st.session_state.temp_user['bib'], "name": st.session_state.temp_user['name'], "department": st.session_state.temp_user['dept'], "race_type": st.session_state.temp_user['type'], "profile_url": url}).execute()
+#                     st.session_state.my_bib = st.session_state.temp_user['bib']
+#                     st.query_params["bib"] = st.session_state.my_bib
+#                     st.session_state.reg_step = "FORM"
+#                     change_page("HOME")
+
+# # --- SCAN PAGE ---
+# elif st.session_state.page == "SCAN":
+#     user_res = supabase.table("runners").select("race_type").eq("bib_number", st.session_state.my_bib).single().execute().data
+#     rtype = user_res['race_type'] if user_res else "Running"
+#     # เงื่อนไข: เดินไม่มี CP3
+#     MY_CP = ["Start", "Checkpoint 1", "Checkpoint 2", "Checkpoint 3", "Finish"] if rtype == "Running" else ["Start", "Checkpoint 1", "Checkpoint 2", "Finish"]
+    
+#     res_l = supabase.table("run_logs").select("checkpoint_name").eq("bib_number", st.session_state.my_bib).execute()
+#     already = [l['checkpoint_name'] for l in res_l.data] if res_l.data else []
+#     next_cp = next((cp for cp in MY_CP if cp not in already), None)
+    
+#     st.markdown(f"<h3 class='center-text'>🏁 สแกนจุด: {st.session_state.my_bib} ({rtype})</h3>", unsafe_allow_html=True)
+#     col = st.columns([1, 2, 1])[1]
+#     with col:
+#         if not next_cp:
+#             st.success("🎉 ครบทุกจุดแล้ว!"); st.button("🎁 ไปหน้าสรุปผล", on_click=change_page, args=("REWARD",), key="scan_btn_rw")
+#         else:
+#             st.info(f"🚩 จุดถัดไป: **{next_cp}**")
+#             qr = qrcode_scanner(key=f"scanner_{next_cp}_{len(already)}")
+#             if qr == next_cp:
+#                 supabase.table("run_logs").insert({"bib_number": st.session_state.my_bib, "checkpoint_name": qr}).execute()
+#                 st.balloons(); st.success("บันทึกสำเร็จ!"); time.sleep(1.2); st.rerun()
+#         st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), key="scan_btn_home")
+
+# # --- LEADERBOARD PAGE ---
+# elif st.session_state.page == "LEADERBOARD":
+#     st.markdown("<h2 class='center-text'>🏆 RACING LEADERBOARD</h2>", unsafe_allow_html=True)
+#     st_autorefresh(interval=5000, key="lb_auto_refresh")
+#     res = supabase.table("run_logs").select("*, runners(*)").order("scanned_at", desc=True).execute()
+#     latest_df = pd.DataFrame(res.data).sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index() if res.data else pd.DataFrame()
+    
+#     lanes = st.columns(len(FULL_CP_LIST))
+#     for idx, cp in enumerate(FULL_CP_LIST):
+#         with lanes[idx]:
+#             st.markdown(f"<div class='cp-header'>{cp}</div>", unsafe_allow_html=True)
+#             inner = ""
+#             if not latest_df.empty:
+#                 for _, r in latest_df[latest_df['checkpoint_name'] == cp].iterrows():
+#                     pic = r['runners']['profile_url'] if r['runners'] else ""
+#                     nick = (r['runners']['name'] if r['runners'] else r['bib_number']).split(" ")[0]
+#                     inner += f"<div style='text-align:center;width:55px;'><img src='{pic}' style='width:50px;height:50px;border-radius:50%;border:2px solid gold;object-fit:cover;'><div style='font-size:9px;font-weight:bold;'>{nick}</div></div>"
+#             components.html(f"<div class='lane-container' style='display:flex;flex-wrap:wrap;gap:5px;justify-content:center;font-family:sans-serif;'>{inner}</div>", height=520)
+#     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), key="lb_btn_home")
+
+# # --- REWARD PAGE ---
+# elif st.session_state.page == "REWARD":
+#     st.markdown("<h2 class='center-text'>🎊 สรุปผลการแข่งขัน 🎊</h2>", unsafe_allow_html=True)
+#     try:
+#         user = supabase.table("runners").select("*").eq("bib_number", st.session_state.my_bib).single().execute().data
+#         logs = supabase.table("run_logs").select("*").eq("bib_number", st.session_state.my_bib).execute().data
+#         scanned = [l['checkpoint_name'] for l in logs]
+        
+#         if user and "Finish" in scanned and "Start" in scanned:
+#             # คำนวณ Rank แยกประเภท (Running/Walking)
+#             all_finish = supabase.table("run_logs").select("bib_number, runners!inner(race_type)").eq("checkpoint_name", "Finish").eq("runners.race_type", user['race_type']).order("scanned_at", desc=False).execute().data
+#             rank = next(i for i, x in enumerate(all_finish) if x['bib_number'] == user['bib_number']) + 1
+#             has_medal = rank <= 100
+            
+#             # คำนวณเวลา
+#             st_t = pd.to_datetime(next(l for l in logs if l['checkpoint_name']=="Start")['scanned_at'])
+#             en_t = pd.to_datetime(next(l for l in logs if l['checkpoint_name']=="Finish")['scanned_at'])
+#             dur = int((en_t - st_t).total_seconds() / 60)
+            
+#             medal_text = "ได้รับเหรียญรางวัล! 🏅" if has_medal else "ไม่ติด 100 อันดับแรก"
+#             m_uri = f"data:image/jpeg;base64,{get_base64_bin('badge.jpg')}"
+
+#             card_html = f"""
+#             <div style="font-family: sans-serif; text-align: center; background: white; padding: 25px; border-radius: 20px; border: 6px solid #D4AF37; width: 300px; margin: auto; box-shadow: 0 10px 20px rgba(0,0,0,0.1);">
+#                 <p style="color: #D4AF37; font-weight: bold; margin: 0;">ประเภท: {user['race_type']} | อันดับ #{rank}</p>
+#                 <div style="position: relative; margin: 20px 0;">
+#                     <img src="{user['profile_url']}" style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 5px solid #D4AF37;">
+#                     {"<img src='"+m_uri+"' style='position: absolute; top:-10px; right:-10px; width:80px;'>" if has_medal else ""}
+#                 </div>
+#                 <h2 style="margin:0;">{user['name']}</h2>
+#                 <div style="display: flex; justify-content: space-around; margin-top: 20px; border-top: 1px dashed #ccc; padding-top: 15px;">
+#                     <div><small>เวลาที่ใช้</small><br><b>{dur} นาที</b></div>
+#                     <div><small>สถานะ</small><br><b style="color: {'green' if has_medal else 'red'};">{medal_text}</b></div>
+#                 </div>
+#             </div>
+#             """
+#             components.html(card_html, height=540)
+#             if has_medal: st.balloons()
+#         else:
+#             st.warning("⚠️ สแกนไม่ครบจุด (ต้องมีจุด Start และ Finish)")
+#     except Exception as e:
+#         st.error(f"Error: {e}")
+#     st.write("")
+#     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), key="rw_btn_home")
+
+# # --- ADMIN PANEL ---
+# elif st.session_state.page == "ADMIN_PANEL":
+#     st.markdown("<h2 class='center-text'>🛠 Admin Panel</h2>", unsafe_allow_html=True)
+#     t1, t2 = st.tabs(["บันทึกแทนนักวิ่ง", "จัดการประวัติ"])
+#     with t1:
+#         a_bib = st.text_input("ระบุหมายเลข BIB").upper()
+#         a_cp = st.selectbox("เลือกจุด Checkpoint", FULL_CP_LIST)
+#         if st.button("บันทึกข้อมูล", key="adm_save"):
+#             if a_bib:
+#                 supabase.table("run_logs").insert({"bib_number": a_bib, "checkpoint_name": a_cp}).execute()
+#                 st.success("บันทึกสำเร็จ!"); time.sleep(1); st.rerun()
+#     with t2:
+#         logs_data = supabase.table("run_logs").select("*, runners(name)").order("scanned_at", desc=True).execute().data
+#         if logs_data:
+#             for l in logs_data:
+#                 c1, c2, c3 = st.columns([3,2,1])
+#                 c1.write(f"{l['bib_number']} - {l['runners']['name'] if l['runners'] else 'N/A'}")
+#                 c2.write(l['checkpoint_name'])
+#                 if c3.button("ลบ", key=f"del_{l['id']}"):
+#                     supabase.table("run_logs").delete().eq("id", l['id']).execute(); st.rerun()
+#     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), key="adm_btn_home")
+
+
+
+
+
+
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
@@ -357,18 +604,18 @@ from streamlit_autorefresh import st_autorefresh
 import pytz
 from datetime import datetime
 import time
-import streamlit.components.v1 as components
 import os
 import base64
+import uuid
 
 # --- 0. CONFIG & STYLES ---
 FULL_CP_LIST = ["Start", "Checkpoint 1", "Checkpoint 2", "Checkpoint 3", "Finish"]
 ADMIN_CODE = "3571138"
+DEFAULT_AVATAR = "https://cdn-icons-png.flaticon.com/512/1144/1144760.png"
 tz = pytz.timezone('Asia/Bangkok')
 
 st.set_page_config(page_title="RCI RACING 2026", layout="wide", initial_sidebar_state="collapsed")
 
-# CSS: ปุ่มสมมาตร, จัดวางกึ่งกลาง, UI เลนแบบใส
 st.markdown("""
     <style>
     .main { background-image: linear-gradient(120deg, #fdfbfb 0%, #ebedee 100%); }
@@ -392,8 +639,11 @@ st.markdown("""
 
 # --- 1. CONNECTION ---
 def init_connection():
-    try: return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    except Exception as e: st.error(f"❌ Connection Error: {e}"); st.stop()
+    try: 
+        return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    except Exception as e: 
+        st.error(f"❌ Connection Error: {e}")
+        st.stop()
 
 supabase = init_connection()
 
@@ -411,11 +661,14 @@ def get_base64_bin(bin_file):
     return ""
 
 def upload_photo(file_bytes, bib):
-    path = f"profile_{bib}.jpg"; bucket = "runner_photos"
+    unique_id = uuid.uuid4().hex[:6]
+    path = f"profile_{bib}_{unique_id}.jpg"
+    bucket = "runner_photos"
     try:
         supabase.storage.from_(bucket).upload(path=path, file=file_bytes, file_options={"content-type": "image/jpeg", "upsert": "true"})
         return f"{st.secrets['SUPABASE_URL']}/storage/v1/object/public/{bucket}/{path}"
-    except: return f"{st.secrets['SUPABASE_URL']}/storage/v1/object/public/{bucket}/{path}"
+    except: 
+        return f"{st.secrets['SUPABASE_URL']}/storage/v1/object/public/{bucket}/{path}"
 
 # --- 3. PAGE ROUTING ---
 
@@ -456,35 +709,54 @@ elif st.session_state.page == "REGISTER":
     st.markdown("<h2 class='center-text'>📝 ลงทะเบียนนักวิ่ง</h2>", unsafe_allow_html=True)
     if "reg_step" not in st.session_state: st.session_state.reg_step = "FORM"
     col = st.columns([1, 2, 1])[1]
+    
     with col:
         if st.session_state.reg_step == "FORM":
-            with st.form("reg_form_v5"):
+            with st.form("reg_form_v6"):
                 name = st.text_input("ชื่อ-นามสกุล")
                 dept = st.selectbox("แผนก", ["Production", "R&D", "QA", "Logistics", "Office", "Maintenance", "Others"])
                 rtype = st.radio("ประเภทกิจกรรม", ["Running", "Walking"], horizontal=True)
-                if st.form_submit_button("ถัดไป: ถ่ายรูป"):
+                if st.form_submit_button("ถัดไป: เลือกรูปโปรไฟล์"):
                     if name:
-                        res = supabase.table("runners").select("bib_number").order("bib_number", desc=True).limit(1).execute()
-                        last_num = int(res.data[0]['bib_number'].split("-")[1]) if res.data else 0
-                        st.session_state.temp_user = {"bib": f"RCI-{last_num+1:03d}", "name": name, "dept": dept, "type": rtype}
-                        st.session_state.reg_step = "PHOTO"; st.rerun()
+                        with st.spinner("กำลังจองหมายเลข BIB..."):
+                            res = supabase.table("runners").select("bib_number").order("bib_number", desc=True).limit(1).execute()
+                            last_num = int(res.data[0]['bib_number'].split("-")[1]) if res.data else 0
+                            new_bib = f"RCI-{last_num+1:03d}"
+                            # จอง BIB ลง Table ทันที
+                            supabase.table("runners").insert({
+                                "bib_number": new_bib, "name": name, "department": dept, 
+                                "race_type": rtype, "profile_url": "" 
+                            }).execute()
+                            st.session_state.temp_bib = new_bib
+                            st.session_state.reg_step = "PHOTO"
+                            st.rerun()
             if st.button("🏠 กลับหน้าหลัก", key="reg_btn_home"): change_page("HOME")
+            
         elif st.session_state.reg_step == "PHOTO":
+            st.info(f"หมายเลขของคุณคือ: **{st.session_state.temp_bib}**")
             img = st.camera_input("ถ่ายรูปโปรไฟล์")
+            
             if img:
-                with st.spinner("บันทึกข้อมูล..."):
-                    url = upload_photo(img.getvalue(), st.session_state.temp_user['bib'])
-                    supabase.table("runners").insert({"bib_number": st.session_state.temp_user['bib'], "name": st.session_state.temp_user['name'], "department": st.session_state.temp_user['dept'], "race_type": st.session_state.temp_user['type'], "profile_url": url}).execute()
-                    st.session_state.my_bib = st.session_state.temp_user['bib']
+                with st.spinner("บันทึกรูปภาพ..."):
+                    url = upload_photo(img.getvalue(), st.session_state.temp_bib)
+                    supabase.table("runners").update({"profile_url": url}).eq("bib_number", st.session_state.temp_bib).execute()
+                    st.session_state.my_bib = st.session_state.temp_bib
                     st.query_params["bib"] = st.session_state.my_bib
                     st.session_state.reg_step = "FORM"
                     change_page("HOME")
+            
+            st.write("---")
+            if st.button("⏩ ข้ามการถ่ายรูป (ใช้รูปเริ่มต้น)", key="skip_photo"):
+                supabase.table("runners").update({"profile_url": DEFAULT_AVATAR}).eq("bib_number", st.session_state.temp_bib).execute()
+                st.session_state.my_bib = st.session_state.temp_bib
+                st.query_params["bib"] = st.session_state.my_bib
+                st.session_state.reg_step = "FORM"
+                change_page("HOME")
 
 # --- SCAN PAGE ---
 elif st.session_state.page == "SCAN":
     user_res = supabase.table("runners").select("race_type").eq("bib_number", st.session_state.my_bib).single().execute().data
     rtype = user_res['race_type'] if user_res else "Running"
-    # เงื่อนไข: เดินไม่มี CP3
     MY_CP = ["Start", "Checkpoint 1", "Checkpoint 2", "Checkpoint 3", "Finish"] if rtype == "Running" else ["Start", "Checkpoint 1", "Checkpoint 2", "Finish"]
     
     res_l = supabase.table("run_logs").select("checkpoint_name").eq("bib_number", st.session_state.my_bib).execute()
@@ -508,6 +780,7 @@ elif st.session_state.page == "SCAN":
 elif st.session_state.page == "LEADERBOARD":
     st.markdown("<h2 class='center-text'>🏆 RACING LEADERBOARD</h2>", unsafe_allow_html=True)
     st_autorefresh(interval=5000, key="lb_auto_refresh")
+    
     res = supabase.table("run_logs").select("*, runners(*)").order("scanned_at", desc=True).execute()
     latest_df = pd.DataFrame(res.data).sort_values("scanned_at", ascending=False).groupby("bib_number").first().reset_index() if res.data else pd.DataFrame()
     
@@ -518,10 +791,13 @@ elif st.session_state.page == "LEADERBOARD":
             inner = ""
             if not latest_df.empty:
                 for _, r in latest_df[latest_df['checkpoint_name'] == cp].iterrows():
-                    pic = r['runners']['profile_url'] if r['runners'] else ""
+                    # เช็คถ้าไม่มีรูปให้ใช้ Default
+                    pic = r['runners']['profile_url'] if (r['runners'] and r['runners']['profile_url']) else DEFAULT_AVATAR
                     nick = (r['runners']['name'] if r['runners'] else r['bib_number']).split(" ")[0]
                     inner += f"<div style='text-align:center;width:55px;'><img src='{pic}' style='width:50px;height:50px;border-radius:50%;border:2px solid gold;object-fit:cover;'><div style='font-size:9px;font-weight:bold;'>{nick}</div></div>"
-            components.html(f"<div class='lane-container' style='display:flex;flex-wrap:wrap;gap:5px;justify-content:center;font-family:sans-serif;'>{inner}</div>", height=520)
+            
+            st.markdown(f"<div class='lane-container'>{inner}</div>", unsafe_allow_html=True)
+            
     st.button("🏠 กลับหน้าหลัก", on_click=change_page, args=("HOME",), key="lb_btn_home")
 
 # --- REWARD PAGE ---
@@ -533,16 +809,16 @@ elif st.session_state.page == "REWARD":
         scanned = [l['checkpoint_name'] for l in logs]
         
         if user and "Finish" in scanned and "Start" in scanned:
-            # คำนวณ Rank แยกประเภท (Running/Walking)
             all_finish = supabase.table("run_logs").select("bib_number, runners!inner(race_type)").eq("checkpoint_name", "Finish").eq("runners.race_type", user['race_type']).order("scanned_at", desc=False).execute().data
             rank = next(i for i, x in enumerate(all_finish) if x['bib_number'] == user['bib_number']) + 1
             has_medal = rank <= 100
             
-            # คำนวณเวลา
             st_t = pd.to_datetime(next(l for l in logs if l['checkpoint_name']=="Start")['scanned_at'])
             en_t = pd.to_datetime(next(l for l in logs if l['checkpoint_name']=="Finish")['scanned_at'])
             dur = int((en_t - st_t).total_seconds() / 60)
             
+            # เช็คถ้าไม่มีรูปถ่าย
+            final_pic = user['profile_url'] if user['profile_url'] else DEFAULT_AVATAR
             medal_text = "ได้รับเหรียญรางวัล! 🏅" if has_medal else "ไม่ติด 100 อันดับแรก"
             m_uri = f"data:image/jpeg;base64,{get_base64_bin('badge.jpg')}"
 
@@ -550,7 +826,7 @@ elif st.session_state.page == "REWARD":
             <div style="font-family: sans-serif; text-align: center; background: white; padding: 25px; border-radius: 20px; border: 6px solid #D4AF37; width: 300px; margin: auto; box-shadow: 0 10px 20px rgba(0,0,0,0.1);">
                 <p style="color: #D4AF37; font-weight: bold; margin: 0;">ประเภท: {user['race_type']} | อันดับ #{rank}</p>
                 <div style="position: relative; margin: 20px 0;">
-                    <img src="{user['profile_url']}" style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 5px solid #D4AF37;">
+                    <img src="{final_pic}" style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 5px solid #D4AF37;">
                     {"<img src='"+m_uri+"' style='position: absolute; top:-10px; right:-10px; width:80px;'>" if has_medal else ""}
                 </div>
                 <h2 style="margin:0;">{user['name']}</h2>
@@ -560,7 +836,7 @@ elif st.session_state.page == "REWARD":
                 </div>
             </div>
             """
-            components.html(card_html, height=540)
+            st.markdown(card_html, unsafe_allow_html=True)
             if has_medal: st.balloons()
         else:
             st.warning("⚠️ สแกนไม่ครบจุด (ต้องมีจุด Start และ Finish)")
