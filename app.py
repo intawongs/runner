@@ -822,9 +822,9 @@ elif st.session_state.page == "REWARD":
             rank = next(i for i, x in enumerate(all_finish) if x['bib_number'] == user['bib_number']) + 1
             has_medal = rank <= 100
             
-            # 3. คำนวณเวลาการแข่งขัน (Gun Time) เริ่มนับจาก 05:00 น.
+            # 3. คำนวณเวลาการแข่งขัน (Gun Time) เริ่มนับจาก 07:30 น.
             race_day = datetime.now(tz).strftime('%Y-%m-%d')
-            gun_start = pd.to_datetime(f"{race_day} 05:00:00").tz_localize(tz)
+            gun_start = pd.to_datetime(f"{race_day} 07:30:00").tz_localize(tz)
             
             # เวลาที่เขาสแกน Finish จริง (แปลงเป็น Timezone ไทย)
             finish_time_tz = pd.to_datetime(scanned["Finish"]).astimezone(tz)
